@@ -263,7 +263,8 @@
     lastGood = good;
     if (value.trim().toLowerCase() === word) send({ type: 'guess', word: value });
   };
-  $('guess').onkeydown = (e) => e.key === 'Enter' && send({ type: 'guess', word: $('guess').value });
+  // must not return false: an on* handler returning false cancels the keystroke
+  $('guess').onkeydown = (e) => { if (e.key === 'Enter') send({ type: 'guess', word: $('guess').value }); };
   $('guess').onpaste = (e) => e.preventDefault(); // no copy-paste cheating
 
   // ---------- messages ----------
