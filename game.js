@@ -15,10 +15,64 @@ const makeTargets = () => Array.from({ length: 300 }, (_, i) => ({
   size: Math.max(40, 96 - i * 2), // px
   life: Math.max(800, 2200 - i * 40), // ms on screen
 }));
+// Leva o Lápis: drag the pencil from start to finish without touching obstacles.
+// Coordinates are in a fixed 600x380 board; the page scales it. app.js uses the same shapes for collisions.
+const W = 600, H = 380, PENCIL_R = 12;
+const rand = (a, b) => a + Math.random() * (b - a);
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+function segDist(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+function makeCourse(level) {
+  const start = { x: 45, y: rand(60, H - 60), r: 26 };
+  const finish = { x: W - 45, y: rand(60, H - 60), r: 28 };
+  // a zigzag "guide" that static ink blots are never placed on, so every course can be finished
+  const path = [start, ...[1, 2, 3].map((k) => ({ x: 45 + (W - 90) * k / 4, y: rand(50, H - 50) })), finish];
+  const pathDist = (p) => Math.min(...path.slice(1).map((b, k) => segDist(p, path[k], b)));
+  const checkpoint = level >= 3 ? { x: path[2].x, y: path[2].y, r: 22 } : null;
+  const obstacles = [];
+
+  const blobs = Math.min(3 + level, 12);
+  for (let tries = 0; obstacles.length < blobs && tries < 1000; tries++) {
+    const o = { type: 'blob', x: rand(20, W - 20), y: rand(20, H - 20), r: rand(16, 30) };
+    if (pathDist(o) > o.r + PENCIL_R + 22 && dist(o, start) > 80 && dist(o, finish) > 80) obstacles.push(o);
+  }
+  // moving obstacles cross the guide: passable with timing. Kept away from the checkpoint so it stays safe.
+  for (let k = 0; k < Math.min(Math.max(level - 1, 0), 2); k++) {
+    const p = path[k ? 3 : 1];
+    const vertical = (level + k) % 2 === 0;
+    const span = 70;
+    obstacles.push({
+      type: 'eraser', w: 44, h: 22, period: Math.max(1200, 3000 - level * 80),
+      x1: vertical ? p.x : p.x - span, y1: vertical ? Math.max(30, p.y - span) : p.y,
+      x2: vertical ? p.x : p.x + span, y2: vertical ? Math.min(H - 30, p.y + span) : p.y,
+    });
+  }
+  for (let k = 0; k < Math.min(Math.max(level - 3, 0), 2); k++) {
+    const a = path[k + 1], b = path[k + 2];
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    // centre off the guide, so the ruler sweeps across it instead of blocking it for good
+    const c = { x: mid.x - (b.y - a.y) / len * 40, y: mid.y + (b.x - a.x) / len * 40 };
+    const room = checkpoint ? dist(c, checkpoint) - checkpoint.r - PENCIL_R - 10 : 80;
+    obstacles.push({
+      type: 'ruler', cx: c.x, cy: c.y, len: Math.max(60, Math.min(rand(100, 140), room * 2)),
+      speed: (k ? -1 : 1) * Math.min(2.4, 0.9 + level * 0.1), phase: rand(0, Math.PI * 2),
+    });
+  }
+  const length = path.slice(1).reduce((sum, b, k) => sum + dist(path[k], b), 0);
+  // finishing faster than a quick hand could drag the pencil along the guide comes from a script
+  return { start, finish, checkpoint, guide: path.map(({ x, y }) => ({ x, y })), obstacles, minMs: Math.round(300 + length / 2.5) };
+}
+const makeCourses = () => Array.from({ length: 60 }, (_, level) => makeCourse(level));
+
 // each mode builds the list every player in the room goes through, in the same order
 const MODES = {
   digitacao: () => shuffle(WORDS),
   caca: makeTargets,
+  lapis: makeCourses,
 };
 
 const normalize = (s) => String(s).trim().toLowerCase().normalize('NFC');
@@ -57,6 +111,7 @@ function sendChallenge(room, player, extra) {
   player.shownAt = Date.now();
   const item = current(room, player);
   if (room.mode === 'caca') send(player.ws, { type: 'target', index: player.index, ...item });
+  else if (room.mode === 'lapis') send(player.ws, { type: 'course', index: player.index, ...item, ...extra });
   else send(player.ws, { type: 'word', word: item, ...extra });
 }
 
@@ -121,6 +176,8 @@ function join(ws, msg) {
     let name = base;
     for (let n = 2; taken.has(name); n++) name = `${base} ${n}`;
     player = { id, key: nextKey++, name, score: 0, ready: false, index: 0, lastSkip: 0 };
+    // the first student into an empty room picks its prova (chosen on the home screen)
+    if (!target.players.size && Object.hasOwn(MODES, msg.mode)) target.mode = msg.mode;
     target.players.set(id, player);
   }
   player.ws = ws;
@@ -162,18 +219,25 @@ function message(ws, raw) {
     sendRooms();
   } else if (!playing) {
     // everything below only counts during a match
+  } else if (msg.type === 'skip' && room.mode !== 'caca' && Date.now() - player.lastSkip > 300) {
+    // skipping a word or a course costs a point; the throttle stops a held key from flooding the room
+    player.lastSkip = Date.now();
+    player.score--;
+    player.index++;
+    sendChallenge(room, player, { skipped: true });
+    sendState(room);
   } else if (room.mode === 'digitacao') {
     if (msg.type === 'guess' && normalize(msg.word) === current(room, player)) {
       player.score++;
       player.index++;
       sendChallenge(room, player);
       sendState(room);
-    } else if (msg.type === 'skip' && Date.now() - player.lastSkip > 300) {
-      // skipping costs a point; the throttle stops a held key from flooding the room
-      player.lastSkip = Date.now();
-      player.score--;
+    }
+  } else if (room.mode === 'lapis') {
+    if (msg.type === 'done' && msg.index === player.index && Date.now() - player.shownAt >= current(room, player).minMs) {
+      player.score++;
       player.index++;
-      sendChallenge(room, player, { skipped: true });
+      sendChallenge(room, player);
       sendState(room);
     }
   } else if (room.mode === 'caca' && msg.index === player.index) {
@@ -195,4 +259,4 @@ function disconnect(ws) {
   leave(ws, false);
 }
 
-module.exports = { connect, message, disconnect, WORDS };
+module.exports = { connect, message, disconnect, WORDS, makeCourse, segDist, PENCIL_R };

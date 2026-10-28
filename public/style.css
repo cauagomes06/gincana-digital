@@ -66,7 +66,7 @@ button { font: inherit; font-weight: 700; color: inherit; cursor: pointer; }
 .room:hover:not(:disabled) { transform: translateY(-3px) rotate(-1deg); }
 .room:disabled { filter: grayscale(.7); opacity: .6; cursor: not-allowed; }
 .room strong { display: block; font: 1.7rem/1.1 'Lilita One', system-ui, sans-serif; }
-.room small { display: block; font-size: 1rem; opacity: .95; }
+.room small { display: block; font-size: 1rem; line-height: 1.4; opacity: .95; }
 #lobbyMsg { color: var(--bad); font-weight: 700; min-height: var(--rule); margin: 8px 0 0; }
 
 /* game */
@@ -118,7 +118,37 @@ button { font: inherit; font-weight: 700; color: inherit; cursor: pointer; }
 .mode { background: #fff; color: var(--room); border: 3px solid var(--room); border-radius: 10px; padding: 6px 16px; }
 .mode[aria-pressed="true"] { background: var(--room); color: #fff; }
 #modeHelp { margin: 8px auto 12px; }
-body[data-mode="caca"] #guess, body[data-mode="caca"] #skipBtn { display: none !important; }
+body[data-mode="caca"] #guess, body[data-mode="caca"] #skipBtn, body[data-mode="lapis"] #guess { display: none !important; }
+
+/* home screen: one card per prova */
+.provas { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-top: 12px; text-align: left; }
+.prova {
+  display: flex; flex-direction: column; gap: 4px; padding: 14px; font-weight: 400; text-align: left;
+  background: #fff; color: var(--ink); border: 3px solid var(--ink); border-radius: 12px;
+}
+.prova .icon { width: 2.2rem; height: 2.2rem; }
+.prova strong { font: 1.35rem/1.1 'Lilita One', system-ui, sans-serif; }
+.prova small { font-size: .95rem; line-height: 1.35; color: var(--muted); }
+.prova[aria-pressed="true"] { background: var(--marker); box-shadow: 0 5px 0 var(--ink); transform: translateY(-2px); }
+
+/* Leva o Lápis: a fixed 600x380 board scaled to the arena's width */
+body[data-mode="lapis"] .arena { height: auto; aspect-ratio: 600 / 380; cursor: default; }
+.board { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; }
+.guide { fill: none; stroke: var(--line); stroke-width: 4; stroke-dasharray: 1 10; stroke-linecap: round; }
+.zone { stroke-width: 2; stroke-dasharray: 5 4; }
+.zone.start { fill: rgba(23, 156, 91, .15); stroke: var(--good); }
+.zone.checkpoint { fill: rgba(255, 225, 77, .35); stroke: #C9A400; }
+.zone.finish { fill: rgba(255, 225, 77, .6); stroke: var(--ink); }
+.finish-flag { color: var(--ink); pointer-events: none; }
+.blob { fill: var(--ink); opacity: .85; } /* ink blot */
+.eraser { fill: #F48FB1; stroke: var(--ink); stroke-width: 2; }
+.ruler { stroke: #E0A526; stroke-width: 8; stroke-linecap: round; }
+.pencil { cursor: grab; }
+.pencil.held { cursor: grabbing; }
+.pencil circle { fill: var(--room); stroke: #fff; stroke-width: 3; }
+.pencil use { color: #fff; pointer-events: none; }
+.arena.hit { animation: hitflash .35s; }
+@keyframes hitflash { 40% { background: rgba(232, 80, 91, .3); border-color: var(--bad); } }
 
 /* Caça às Letras: the shrinking ring shows how long the letter stays */
 .arena {

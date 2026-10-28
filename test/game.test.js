@@ -72,6 +72,82 @@ test('Caça às Letras: clique valida tempo e ordem', async () => {
   for (const ws of [leo, lia]) ws.close();
 });
 
+test('Leva o Lápis: todo percurso tem saída e pontos seguros de verdade', () => {
+  const { makeCourse, segDist, PENCIL_R } = require('../game');
+  // same motion formulas as public/app.js
+  const eraserAt = (o, t) => { const f = (1 - Math.cos(2 * Math.PI * t / o.period)) / 2; return { x: o.x1 + (o.x2 - o.x1) * f, y: o.y1 + (o.y2 - o.y1) * f }; };
+  const hits = (o, p, t) => {
+    if (o.type === 'blob') return Math.hypot(p.x - o.x, p.y - o.y) < o.r + PENCIL_R;
+    if (o.type === 'eraser') {
+      const c = eraserAt(o, t);
+      const dx = Math.max(Math.abs(p.x - c.x) - o.w / 2, 0), dy = Math.max(Math.abs(p.y - c.y) - o.h / 2, 0);
+      return dx * dx + dy * dy < PENCIL_R * PENCIL_R;
+    }
+    const a = o.phase + o.speed * t / 1000, half = o.len / 2;
+    const end = (s) => ({ x: o.cx + s * half * Math.cos(a), y: o.cy + s * half * Math.sin(a) });
+    return segDist(p, end(-1), end(1)) < PENCIL_R + 4;
+  };
+  for (let round = 0; round < 20; round++) {
+    for (let level = 0; level < 60; level++) {
+      const c = makeCourse(level);
+      const blobs = c.obstacles.filter((o) => o.type === 'blob');
+      // the guide line never touches a static blot, so the course can always be finished
+      for (let k = 1; k < c.guide.length; k++) {
+        for (let s = 0; s <= 1; s += 0.02) {
+          const p = { x: c.guide[k - 1].x + (c.guide[k].x - c.guide[k - 1].x) * s, y: c.guide[k - 1].y + (c.guide[k].y - c.guide[k - 1].y) * s };
+          assert.ok(!blobs.some((o) => hits(o, p, 0)), `level ${level}: guide blocked`);
+        }
+      }
+      // start, checkpoint and finish are never hit by anything, at any moment
+      for (let t = 0; t < 6000; t += 50) {
+        for (const safe of [c.start, c.checkpoint, c.finish].filter(Boolean)) {
+          assert.ok(!c.obstacles.some((o) => hits(o, safe, t)), `level ${level}: safe spot hit at ${t}ms`);
+        }
+      }
+    }
+  }
+  assert.ok(makeCourse(8).obstacles.length > makeCourse(0).obstacles.length, 'later courses are harder');
+});
+
+test('Leva o Lápis: chegada rápida demais é recusada, pular custa 1 ponto', async () => {
+  const ze = await connect('Zé', 'azul', 'ze');
+  await wait(50);
+  sendTo(ze, { type: 'mode', mode: 'lapis' });
+  sendTo(ze, { type: 'ready', ready: true });
+  const c0 = await waitFor(ze, 'course');
+  assert.strictEqual(c0.index, 0);
+  sendTo(ze, { type: 'done', index: 0 }); // no hand drags that fast
+  await wait(c0.minMs + 20);
+  sendTo(ze, { type: 'done', index: 0 });
+  assert.strictEqual((await waitFor(ze, 'course')).index, 1);
+  sendTo(ze, { type: 'skip' });
+  const skipped = await waitFor(ze, 'course');
+  assert.ok(skipped.skipped && skipped.index === 2);
+  const { ranking } = await waitFor(ze, 'end');
+  assert.deepStrictEqual(ranking.map((p) => [p.name, p.score]), [['Zé', 0]]); // +1 course, -1 skip
+  sendTo(ze, { type: 'mode', mode: 'digitacao' });
+  await wait(50);
+  sendTo(ze, { type: 'leave' });
+  await wait(50);
+  ze.close();
+});
+
+test('quem entra numa sala vazia escolhe a prova', async () => {
+  const ana = await connect('Ana', 'roxa', 'pick1');
+  await wait(50);
+  ana.send(JSON.stringify({ type: 'leave' }));
+  await wait(50);
+  ana.send(JSON.stringify({ type: 'join', name: 'Ana', room: 'roxa', id: 'pick1', mode: 'caca' }));
+  const bia = await connect('Bia', 'roxa', 'pick2'); // joins with no prova: keeps the room's
+  bia.send(JSON.stringify({ type: 'noop' }));
+  await wait(50);
+  assert.strictEqual(bia.msgs.filter((m) => m.type === 'state').pop().mode, 'caca');
+  for (const ws of [ana, bia]) ws.send(JSON.stringify({ type: 'mode', mode: 'digitacao' }));
+  await wait(50);
+  for (const ws of [ana, bia]) { ws.send(JSON.stringify({ type: 'leave' })); ws.close(); }
+  await wait(50);
+});
+
 test('partida completa com várias salas', async () => {
   // bad messages must not crash the server (a crash would kill this test process too)
   const rogue = await connect('Rogue', 'roxa');

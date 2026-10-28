@@ -2,11 +2,17 @@ const $ = (id) => document.getElementById(id);
 const ROOM_COLORS = { azul: 'var(--azul)', verde: 'var(--verde)', roxa: 'var(--roxa)' };
 let ws, myKey, word = '', lastGood = true, clockTimer, myReady = false, replaced = false;
 let mode = 'digitacao', targetTimer;
-const MODE_NAMES = { digitacao: 'Corrida das Letras', caca: 'Caça às Letras' };
-const MODE_HELP = {
-  digitacao: 'Digite a palavra que aparece. Cada palavra certa vale 1 ponto. Esc pula a palavra (−1 ponto).',
-  caca: 'Clique nas letras antes que elas sumam. Cada letra vale 1 ponto, e elas ficam menores e mais rápidas.',
-};
+// one entry per prova: drives the home-screen cards, the in-room picker and the help text
+const PROVAS = [
+  { id: 'digitacao', name: 'Corrida das Letras', icon: 'keyboard', skip: 'Pular palavra (−1 ponto) · Esc',
+    help: 'Digite a palavra que aparece. Cada palavra certa vale 1 ponto. Esc pula a palavra (−1 ponto).' },
+  { id: 'caca', name: 'Caça às Letras', icon: 'cursor-click',
+    help: 'Clique nas letras antes que elas sumam. Cada letra vale 1 ponto, e elas ficam menores e mais rápidas.' },
+  { id: 'lapis', name: 'Leva o Lápis', icon: 'pencil-simple', skip: 'Pular percurso (−1 ponto)',
+    help: 'Arraste o lápis até a bandeira sem encostar nos borrões, borrachas e réguas. Cada percurso vale 1 ponto.' },
+];
+const prova = (id) => PROVAS.find((p) => p.id === id) || PROVAS[0];
+const iconSvg = (name) => `<svg class="icon" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const lanes = new Map(); // player key -> <li>
 // secret id survives reloads in this tab, so a dropped student rejoins the same match with their score
 const session = (() => { try { return JSON.parse(sessionStorage.getItem('corrida')) || {}; } catch { return {}; } })();
@@ -111,6 +117,7 @@ const SFX = {
   // mid-range on purpose: cheap classroom speakers barely play anything below ~200 Hz
   missClick: () => sfx([64, 58], 0.06, 0.1, 'square', 0.6), // "bzz-bzz": clicked the paper, not the letter
   timeout: () => sfx([72, 67, 62, 55], 0.08, 0.14, 'sawtooth', 0.45), // falling "wom-wom": the letter got away
+  crash: () => sfx([67, 61, 55], 0.05, 0.12, 'sawtooth', 0.55), // quick "brr": the pencil touched an obstacle
   end: () => sfx([72, 72, 72, 76, 79, 76, 79, 84], 0.13, 0.22),
 };
 $('musicBtn').onclick = () => { prefs.music = !prefs.music; applySound(); };
@@ -122,7 +129,7 @@ function connect() {
   sock.onmessage = (e) => { if (sock === ws) handle(JSON.parse(e.data)); }; // ignore a stale socket
   sock.onopen = () => {
     $('lobbyMsg').textContent = '';
-    if (session.room) send({ type: 'join', name: session.name, room: session.room, id: session.id });
+    if (session.room) send({ type: 'join', name: session.name, room: session.room, id: session.id, mode: session.mode });
   };
   sock.onclose = () => {
     if (sock !== ws) return;
@@ -145,12 +152,149 @@ function joinRoom(room) {
   Object.assign(session, { name, room });
   saveSession();
   initAudio();
-  send({ type: 'join', name, room, id: session.id });
+  send({ type: 'join', name, room, id: session.id, mode: session.mode });
 }
 function clearArena() {
   clearTimeout(targetTimer);
+  if (course) cancelAnimationFrame(course.frame);
+  course = null;
   $('arena').replaceChildren();
   $('arena').classList.add('hidden');
+}
+
+// ---------- Leva o Lápis ----------
+// shapes and formulas must match makeCourse in game.js (the test checks the same ones)
+const SVGNS = 'http://www.w3.org/2000/svg';
+const BOARD_W = 600, BOARD_H = 380, PENCIL_R = 12;
+let course = null; // the course on screen: data, svg elements, pencil position, drag state
+function svgEl(tag, attrs, parent) {
+  const el = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  if (parent) parent.append(el);
+  return el;
+}
+function segDist(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+function eraserAt(o, t) {
+  const f = (1 - Math.cos(2 * Math.PI * t / o.period)) / 2;
+  return { x: o.x1 + (o.x2 - o.x1) * f, y: o.y1 + (o.y2 - o.y1) * f };
+}
+function rulerEnds(o, t) {
+  const a = o.phase + o.speed * t / 1000, half = o.len / 2;
+  return [-1, 1].map((s) => ({ x: o.cx + s * half * Math.cos(a), y: o.cy + s * half * Math.sin(a) }));
+}
+function touches(o, p, t) {
+  if (o.type === 'blob') return Math.hypot(p.x - o.x, p.y - o.y) < o.r + PENCIL_R;
+  if (o.type === 'eraser') {
+    const c = eraserAt(o, t);
+    const dx = Math.max(Math.abs(p.x - c.x) - o.w / 2, 0), dy = Math.max(Math.abs(p.y - c.y) - o.h / 2, 0);
+    return dx * dx + dy * dy < PENCIL_R * PENCIL_R;
+  }
+  const [a, b] = rulerEnds(o, t);
+  return segDist(p, a, b) < PENCIL_R + 4;
+}
+const elapsed = () => performance.now() - course.shownAt;
+const hitsAnything = (p) => course.data.obstacles.some((o) => touches(o, p, elapsed()));
+
+function startCourse(c) {
+  if (course) cancelAnimationFrame(course.frame);
+  const svg = svgEl('svg', { viewBox: `0 0 ${BOARD_W} ${BOARD_H}`, class: 'board' });
+  svgEl('polyline', { points: c.guide.map((p) => `${p.x},${p.y}`).join(' '), class: 'guide' }, svg);
+  svgEl('circle', { cx: c.start.x, cy: c.start.y, r: c.start.r, class: 'zone start' }, svg);
+  if (c.checkpoint) svgEl('circle', { cx: c.checkpoint.x, cy: c.checkpoint.y, r: c.checkpoint.r, class: 'zone checkpoint' }, svg);
+  svgEl('circle', { cx: c.finish.x, cy: c.finish.y, r: c.finish.r, class: 'zone finish' }, svg);
+  svgEl('use', { href: '#i-flag-checkered', x: c.finish.x - 13, y: c.finish.y - 13, width: 26, height: 26, class: 'finish-flag' }, svg);
+  const shapes = c.obstacles.map((o) => {
+    if (o.type === 'blob') return svgEl('circle', { cx: o.x, cy: o.y, r: o.r, class: 'blob' }, svg);
+    if (o.type === 'eraser') return svgEl('rect', { width: o.w, height: o.h, rx: 5, class: 'eraser' }, svg);
+    return svgEl('line', { class: 'ruler' }, svg);
+  });
+  const pencil = svgEl('g', { class: 'pencil' }, svg);
+  svgEl('circle', { r: PENCIL_R + 2 }, pencil);
+  svgEl('use', { href: '#i-pencil-simple', x: -9, y: -9, width: 18, height: 18 }, pencil);
+
+  course = { data: c, svg, shapes, pencil, pos: { ...c.start }, safe: { ...c.start }, dragging: false, done: false, shownAt: performance.now() };
+  placePencil();
+  pencil.addEventListener('pointerdown', (e) => {
+    if (course.done) return;
+    e.preventDefault();
+    course.dragging = true;
+    svg.setPointerCapture(e.pointerId);
+    pencil.classList.add('held');
+  });
+  svg.addEventListener('pointermove', (e) => {
+    if (!course.dragging) return;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    movePencil({ x: Math.min(Math.max(p.x, PENCIL_R), BOARD_W - PENCIL_R), y: Math.min(Math.max(p.y, PENCIL_R), BOARD_H - PENCIL_R) });
+  });
+  const release = () => { course.dragging = false; pencil.classList.remove('held'); };
+  svg.addEventListener('pointerup', release);
+  svg.addEventListener('pointercancel', release);
+  $('arena').replaceChildren(svg);
+  course.frame = requestAnimationFrame(animateCourse);
+}
+function placePencil() { course.pencil.setAttribute('transform', `translate(${course.pos.x} ${course.pos.y})`); }
+
+// walk in small steps so a fast drag can't jump over a thin ruler
+function movePencil(to) {
+  const from = course.pos, steps = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / 4));
+  for (let s = 1; s <= steps; s++) {
+    const p = { x: from.x + (to.x - from.x) * s / steps, y: from.y + (to.y - from.y) * s / steps };
+    if (hitsAnything(p)) return crash();
+    course.pos = p;
+    const cp = course.data.checkpoint;
+    if (cp && course.safe !== cp && Math.hypot(p.x - cp.x, p.y - cp.y) < cp.r) {
+      course.safe = cp;
+      $('info').textContent = 'Ponto seguro! Se encostar, você volta para cá.';
+      SFX.join();
+    }
+    const f = course.data.finish;
+    if (Math.hypot(p.x - f.x, p.y - f.y) < f.r) { placePencil(); return finishCourse(); }
+  }
+  placePencil();
+}
+function crash() {
+  course.dragging = false;
+  course.pencil.classList.remove('held');
+  course.pos = { x: course.safe.x, y: course.safe.y };
+  placePencil();
+  $('arena').classList.remove('hit');
+  void $('arena').offsetWidth;
+  $('arena').classList.add('hit');
+  $('info').textContent = 'Encostou! Volte do ponto seguro.';
+  SFX.crash();
+}
+function finishCourse() {
+  course.done = true;
+  course.dragging = false;
+  $('info').textContent = 'Chegou! Próximo percurso…';
+  SFX.correct();
+  const { index, minMs } = course.data;
+  // the server rejects arrivals faster than minMs; a very quick hand just waits a moment
+  setTimeout(() => send({ type: 'done', index }), Math.max(0, minMs + 50 - elapsed()));
+}
+function animateCourse() {
+  const t = elapsed();
+  course.data.obstacles.forEach((o, i) => {
+    const el = course.shapes[i];
+    if (o.type === 'eraser') {
+      const c = eraserAt(o, t);
+      el.setAttribute('x', c.x - o.w / 2);
+      el.setAttribute('y', c.y - o.h / 2);
+    } else if (o.type === 'ruler') {
+      const [a, b] = rulerEnds(o, t);
+      el.setAttribute('x1', a.x); el.setAttribute('y1', a.y);
+      el.setAttribute('x2', b.x); el.setAttribute('y2', b.y);
+    }
+  });
+  if (!course.done && hitsAnything(course.pos)) crash(); // a moving obstacle ran into a resting pencil
+  course.frame = requestAnimationFrame(animateCourse);
 }
 function showLobby() {
   session.room = null;
@@ -171,11 +315,34 @@ $('leaveBtn').onclick = () => {
   showLobby();
   $('lobbyMsg').textContent = '';
 };
-const skip = () => { if (word) send({ type: 'skip' }); };
+const skip = () => { if (word || (course && !course.done)) send({ type: 'skip' }); };
 $('skipBtn').onclick = () => { skip(); $('guess').focus(); };
-for (const b of document.querySelectorAll('.mode')) b.onclick = () => send({ type: 'mode', mode: b.dataset.mode });
 // a click on the empty paper is a miss: no penalty, just a sound so students notice
-$('arena').onclick = (e) => { if (e.target === $('arena')) SFX.missClick(); };
+$('arena').onclick = (e) => { if (mode === 'caca' && e.target === $('arena')) SFX.missClick(); };
+
+// home screen cards (the choice travels with the student into an empty room) and the in-room picker
+session.mode = session.mode || 'digitacao';
+const markProva = () => { for (const c of document.querySelectorAll('.prova')) c.setAttribute('aria-pressed', c.dataset.mode === session.mode); };
+for (const p of PROVAS) {
+  const card = document.createElement('button');
+  card.className = 'prova';
+  card.dataset.mode = p.id;
+  card.innerHTML = iconSvg(p.icon);
+  const name = document.createElement('strong'); name.textContent = p.name;
+  const help = document.createElement('small'); help.textContent = p.help;
+  card.append(name, help);
+  card.onclick = () => { session.mode = p.id; saveSession(); markProva(); };
+  $('provas').append(card);
+
+  const b = document.createElement('button');
+  b.className = 'mode';
+  b.dataset.mode = p.id;
+  b.innerHTML = iconSvg(p.icon);
+  b.append(` ${p.name}`);
+  b.onclick = () => send({ type: 'mode', mode: p.id });
+  $('modes').append(b);
+}
+markProva();
 $('readyBtn').onclick = () => {
   setReady(!myReady);
   send({ type: 'ready', ready: myReady });
@@ -218,11 +385,11 @@ function handle(msg) {
       b.style.setProperty('--c', ROOM_COLORS[r.id]);
       b.disabled = r.count >= msg.max || r.running;
       const name = document.createElement('strong'); name.textContent = r.name;
-      const prova = document.createElement('small'); prova.textContent = `Prova: ${MODE_NAMES[r.mode]}`;
+      const provaTag = document.createElement('small'); provaTag.textContent = `Prova: ${prova(r.mode).name}`;
     const count = document.createElement('small'); count.textContent = `${r.count} de ${msg.max} alunos`;
       const status = document.createElement('small');
       status.textContent = r.running ? '🔒 Partida em andamento' : r.count >= msg.max ? 'Sala cheia' : 'Esperando alunos';
-      b.append(name, prova, count, status);
+      b.append(name, provaTag, count, status);
       b.onclick = () => joinRoom(r.id);
       return b;
     }));
@@ -273,7 +440,8 @@ function handle(msg) {
   mode = msg.mode;
   document.body.dataset.mode = mode;
   for (const b of document.querySelectorAll('.mode')) b.setAttribute('aria-pressed', b.dataset.mode === mode);
-  $('modeHelp').textContent = MODE_HELP[mode];
+  $('modeHelp').textContent = prova(mode).help;
+  $('skipBtn').textContent = prova(mode).skip || '';
   $('modes').classList.toggle('hidden', msg.running);
   const me = msg.players.find((p) => p.key === myKey);
   if (me && !msg.running) setReady(me.ready); // the server clears "pronto" when the prova changes
@@ -289,6 +457,15 @@ function handle(msg) {
     $('skipBtn').classList.add('hidden');
     clearArena();
     runClock(msg.countdown, msg.duration);
+  } else if (msg.type === 'course') {
+    const first = $('arena').classList.contains('hidden');
+    $('arena').classList.remove('hidden');
+    $('word').textContent = '';
+    $('info').textContent = msg.skipped ? 'Percurso pulado: −1 ponto.'
+      : first ? 'Valendo! Arraste o lápis até a bandeira.' : `Percurso ${msg.index + 1}. Vai!`;
+    $('skipBtn').classList.remove('hidden');
+    msg.skipped ? SFX.wrong() : first && SFX.word();
+    startCourse(msg);
   } else if (msg.type === 'target') {
     if ($('arena').classList.contains('hidden')) {
       $('arena').classList.remove('hidden');
