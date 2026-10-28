@@ -16,6 +16,7 @@ const PROVAS = [
     help: 'Arraste as sílabas para os espaços e monte a palavra. Duas sílabas sobram! Cada palavra vale 1 ponto.' },
 ];
 const BALLOON_LABELS = { click: '1 clique', double: '2 cliques', right: 'direito' };
+const DOUBLE_CLICK_MS = 600; // gap allowed between the two clicks on a yellow balloon (game.js allows for it)
 const prova = (id) => PROVAS.find((p) => p.id === id) || PROVAS[0];
 const iconSvg = (name) => `<svg class="icon" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const lanes = new Map(); // player key -> <li>
@@ -327,12 +328,9 @@ const skip = () => { if (word || (course && !course.done) || (puzzle && !puzzle.
 $('skipBtn').onclick = () => { skip(); $('guess').focus(); };
 // a click on the empty paper is a miss: no penalty, just a sound so students notice
 const clickModes = ['caca', 'baloes'];
-$('arena').onclick = (e) => { if (clickModes.includes(mode) && e.target === $('arena')) SFX.missClick(); };
-$('arena').oncontextmenu = (e) => {
-  if (mode !== 'baloes') return;
-  e.preventDefault(); // the right button pops green balloons, so no browser menu here
-  if (e.target === $('arena')) SFX.missClick();
-};
+// pointerdown like the balloons: a "click" that started on a balloon and ended on the paper would sound like a miss
+$('arena').onpointerdown = (e) => { if (clickModes.includes(mode) && e.target === $('arena')) SFX.missClick(); };
+$('arena').oncontextmenu = (e) => { if (mode === 'baloes') e.preventDefault(); }; // right button pops green balloons
 
 // ---------- Estoura Balões ----------
 function startBalloon(msg) {
@@ -342,10 +340,18 @@ function startBalloon(msg) {
   b.textContent = BALLOON_LABELS[msg.kind];
   b.setAttribute('aria-label', `Balão: ${BALLOON_LABELS[msg.kind]}`);
   b.style.cssText = `left: ${msg.x * 100}%; --size: ${msg.size}px; --life: ${msg.life}ms`;
-  let popped = false;
+  let popped = false, firstClickAt = 0, holdTimer;
+  // the "got away" timer pauses while the balloon waits for a second click
+  let remaining = msg.life, armedAt = 0;
+  const armMiss = () => {
+    armedAt = performance.now();
+    targetTimer = setTimeout(() => { send({ type: 'miss', index: msg.index }); SFX.timeout(); }, remaining);
+  };
+  const holdMiss = () => { clearTimeout(targetTimer); remaining -= performance.now() - armedAt; };
   const pop = () => {
     popped = true;
     clearTimeout(targetTimer);
+    clearTimeout(holdTimer);
     b.classList.add('popped');
     b.disabled = true;
     send({ type: 'hit', index: msg.index });
@@ -357,23 +363,28 @@ function startBalloon(msg) {
     b.classList.add('wrong');
     SFX.missClick();
   };
-  b.onclick = (e) => {
-    if (popped) return;
-    if (msg.kind === 'right') return wrong();
-    // e.detail counts quick consecutive clicks; a slow second click starts over at 1
-    if (msg.kind === 'double' && e.detail < 2) { b.classList.add('half'); return SFX.half(); }
-    pop();
-  };
-  b.oncontextmenu = (e) => {
+  // pointerdown, not click: a click only fires if the button also goes up over the balloon,
+  // which fails when the balloon floats away mid-click; and the browser's own double-click
+  // counting resets if the mouse moves a few pixels, which children's hands always do
+  b.onpointerdown = (e) => {
     e.preventDefault();
     if (popped) return;
-    msg.kind === 'right' ? pop() : wrong();
+    if (e.button === 2) return msg.kind === 'right' ? pop() : wrong();
+    if (e.button !== 0) return;
+    if (msg.kind === 'right') return wrong();
+    if (msg.kind === 'click') return pop();
+    // yellow: the first click stops the balloon so the second can't miss it
+    if (performance.now() - firstClickAt < DOUBLE_CLICK_MS) return pop();
+    firstClickAt = performance.now();
+    b.classList.add('half');
+    holdMiss();
+    SFX.half();
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => { b.classList.remove('half'); armMiss(); }, DOUBLE_CLICK_MS); // too slow: it floats on
   };
+  b.oncontextmenu = (e) => e.preventDefault();
   $('arena').replaceChildren(b);
-  targetTimer = setTimeout(() => {
-    send({ type: 'miss', index: msg.index });
-    SFX.timeout();
-  }, msg.life);
+  armMiss();
 }
 
 // ---------- Monta Palavra ----------

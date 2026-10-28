@@ -266,7 +266,8 @@ function message(ws, raw) {
     }
   } else if (CLICK_MODES.includes(room.mode) && msg.index === player.index) {
     const age = Date.now() - player.shownAt;
-    if (msg.type === 'hit' && age >= MIN_REACTION_MS && age <= current(room, player).life + 500) {
+    // +1500 ms: network lag, plus a yellow balloon standing still while it waits for the second click
+    if (msg.type === 'hit' && age >= MIN_REACTION_MS && age <= current(room, player).life + 1500) {
       player.score++;
       player.index++;
       sendChallenge(room, player);
