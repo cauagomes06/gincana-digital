@@ -100,13 +100,12 @@ const CLICK_MODES = ['caca', 'baloes']; // a target on a timer: hit or miss, no 
 const FINISH_MODES = ['lapis', 'monta']; // the student reports "done"; the server checks it wasn't impossibly fast
 
 const normalize = (s) => String(s).trim().toLowerCase().normalize('NFC');
-const rooms = {
-  azul: { name: 'Sala Azul' },
-  verde: { name: 'Sala Verde' },
-  roxa: { name: 'Sala Roxa' },
-};
 // players are keyed by a secret id the browser keeps, so a dropped connection can rejoin with its score
-for (const room of Object.values(rooms)) Object.assign(room, { players: new Map(), mode: 'digitacao', running: false, sequence: [], startsAt: 0, endsAt: 0 });
+const makeRoom = (name) => ({ name, players: new Map(), mode: 'digitacao', running: false, sequence: [], startsAt: 0, endsAt: 0 });
+const rooms = { azul: makeRoom('Sala Azul'), verde: makeRoom('Sala Verde'), roxa: makeRoom('Sala Roxa') };
+// "Jogar sozinho": a private room per browser id, never listed in the lobby, removed once empty
+const soloRooms = new Map();
+const dropIfEmptySolo = (room) => { if (room.soloId && !room.players.size) soloRooms.delete(room.soloId); };
 let nextKey = 1; // public player key, safe to show to everyone (the id is not)
 const clients = new Set(); // every open socket, in a room or still in the lobby
 
@@ -153,6 +152,7 @@ function endGame(room) {
   broadcast(room, { type: 'end', ranking: final });
   sendState(room);
   sendRooms();
+  dropIfEmptySolo(room);
 }
 
 // starts once every player in the room pressed "pronto"
@@ -179,14 +179,20 @@ function leave(ws, quit) {
   if (room.running && !quit) player.ws = null; // keep the score so they can come back
   else room.players.delete(player.id);
   if (room.running && !room.players.size) return endGame(room); // everyone quit: unlock the room now
+  dropIfEmptySolo(room);
   sendRooms();
   startIfAllReady(room);
 }
 
 function join(ws, msg) {
-  const target = Object.hasOwn(rooms, msg.room) && rooms[msg.room];
   const id = String(msg.id || '').slice(0, 40);
-  if (!target || !id) return;
+  if (!id) return;
+  let target = Object.hasOwn(rooms, msg.room) && rooms[msg.room];
+  if (msg.room === 'solo') {
+    target = soloRooms.get(id) || Object.assign(makeRoom('Treino'), { soloId: id });
+    soloRooms.set(id, target);
+  }
+  if (!target) return;
   let player = target.players.get(id);
   if (player) {
     // same browser coming back: take over the old connection, keep score and position
@@ -292,4 +298,4 @@ function disconnect(ws) {
   leave(ws, false);
 }
 
-module.exports = { connect, message, disconnect, WORDS, makeCourse, segDist, PENCIL_R, makePuzzle };
+module.exports = { connect, message, disconnect, WORDS, makeCourse, segDist, PENCIL_R, makePuzzle, soloRooms };

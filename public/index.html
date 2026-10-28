@@ -27,7 +27,7 @@
 <main>
   <section id="lobby">
     <h1><span>Gincana Digital</span></h1>
-    <p class="muted">Provas de teclado e mouse para a turma. Entre numa sala, escolham a prova e cliquem em "pronto". Quando o tempo de <span id="duration">2 minutos</span> acabar, vence quem fez mais pontos.</p>
+    <p class="muted">Provas de teclado e mouse. Treine sozinho ou dispute com a turma numa sala. Cada partida dura <span id="duration">2 minutos</span>, e vence quem fizer mais pontos.</p>
 
     <label for="name">Seu nome</label>
     <input id="name" maxlength="20" autocomplete="off" placeholder="Ex.: Maria do 8º B" autofocus>
@@ -35,7 +35,12 @@
     <h2>Escolha a prova</h2>
     <div class="provas" id="provas" role="group" aria-label="Prova"></div>
 
-    <h2>Escolha sua sala</h2>
+    <div class="solo">
+      <button class="primary" id="soloBtn">Jogar sozinho</button>
+      <span class="muted">Treine a prova escolhida, sem entrar numa sala.</span>
+    </div>
+
+    <h2>Ou jogue com a turma</h2>
     <p class="muted">Numa sala vazia, vale a prova que você escolheu. Numa sala com gente, vale a prova da turma.</p>
     <div class="rooms" id="rooms"></div>
     <p id="lobbyMsg" role="alert"></p>

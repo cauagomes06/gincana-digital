@@ -19,6 +19,7 @@ Para ser justo, **todos da sala recebem as mesmas palavras, letras, percursos e 
 ## Como jogar
 
 1. Abra o link do jogo, digite seu nome e **escolha a prova** nos cartões.
+   - Para **treinar sozinho**, clique em **Jogar sozinho**. O nome é opcional, ninguém mais entra e a vaga nas salas não é ocupada. No fim aparecem só os seus pontos.
 2. **Escolha a sala** (Azul, Verde ou Roxa). Numa sala vazia, vale a prova que você escolheu. Numa sala com gente, vale a prova da turma. Só o **dono da sala** (quem entrou primeiro) pode trocar a prova lá dentro, antes de começar; se ele sair, o próximo da fila vira o dono.
 3. Todos clicam em **"Estou pronto!"**. A partida começa sozinha quando **todos** estão prontos, com uma contagem 3, 2, 1.
 4. No fim aparece um **pódio** com os 3 primeiros, e cada aluno vê a própria colocação.

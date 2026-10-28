@@ -155,7 +155,7 @@ function connect() {
 const send = (msg) => ws.readyState === 1 && ws.send(JSON.stringify(msg));
 
 function joinRoom(room) {
-  const name = $('name').value.trim();
+  const name = $('name').value.trim() || (room === 'solo' ? 'Você' : ''); // playing alone, a name is optional
   if (!name) { $('lobbyMsg').textContent = 'Digite seu nome antes de escolher a sala.'; return $('name').focus(); }
   Object.assign(session, { name, room });
   saveSession();
@@ -487,6 +487,7 @@ for (const p of PROVAS) {
   $('modes').append(b);
 }
 markProva();
+$('soloBtn').onclick = () => joinRoom('solo');
 $('readyBtn').onclick = () => {
   setReady(!myReady);
   send({ type: 'ready', ready: myReady });
@@ -596,7 +597,8 @@ function handle(msg) {
     if (me && !msg.running) setReady(me.ready); // the server clears "pronto" when the prova changes
     $('readyBtn').parentElement.classList.toggle('hidden', msg.running);
     const readyCount = msg.players.filter((p) => p.ready).length;
-    $('readyHint').textContent = `${readyCount} de ${msg.players.length} prontos. A partida começa quando todos estiverem prontos.`;
+    $('readyHint').textContent = msg.players.length === 1 ? 'A partida começa assim que você clicar.'
+      : `${readyCount} de ${msg.players.length} prontos. A partida começa quando todos estiverem prontos.`;
     $('round').textContent = `${msg.players.length} ${msg.players.length === 1 ? 'aluno' : 'alunos'} na sala`;
   } else if (msg.type === 'start') {
     word = '';
@@ -688,7 +690,8 @@ function handle(msg) {
     }
     $('word').replaceChildren(podium);
     const me = msg.ranking.find((p) => p.key === myKey);
-    $('info').textContent = (me ? `Você ficou em ${placeOf(me)}º lugar com ${pts(me.score)}. ` : '') + 'Clique em "Estou pronto!" para jogar de novo.';
+    const result = !me ? '' : msg.ranking.length === 1 ? `Você fez ${pts(me.score)}. ` : `Você ficou em ${placeOf(me)}º lugar com ${pts(me.score)}. `;
+    $('info').textContent = result + 'Clique em "Estou pronto!" para jogar de novo.';
     $('guess').value = '';
     $('guess').disabled = true;
     $('skipBtn').classList.add('hidden');

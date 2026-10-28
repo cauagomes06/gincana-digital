@@ -239,6 +239,36 @@ test('mensagens em excesso são ignoradas', async () => {
   await wait(50);
 });
 
+test('jogar sozinho: sala particular, fora da lista, apagada no fim', async () => {
+  const { soloRooms } = require('../game');
+  const lu = await connect('Lu', 'solo', 'lu');
+  const rui = await connect('Rui', 'solo', 'rui');
+  await wait(50);
+  // a separate room each, with the prova picked on the home screen
+  lu.send(JSON.stringify({ type: 'leave' }));
+  await wait(50);
+  lu.send(JSON.stringify({ type: 'join', name: 'Lu', room: 'solo', id: 'lu', mode: 'caca' }));
+  await wait(50);
+  const state = lu.msgs.filter((m) => m.type === 'state').pop();
+  assert.deepStrictEqual(state.players.map((p) => p.name), ['Lu']);
+  assert.strictEqual(state.mode, 'caca');
+  const { rooms } = lu.msgs.filter((m) => m.type === 'rooms').pop();
+  assert.deepStrictEqual(rooms.map((r) => r.id), ['azul', 'verde', 'roxa']); // not in the lobby
+  assert.strictEqual(rooms.reduce((n, r) => n + r.count, 0), 0, 'solo players take no seat in the rooms');
+
+  sendTo(lu, { type: 'ready', ready: true }); // alone, "pronto" starts at once
+  await waitFor(lu, 'target');
+  lu.terminate(); // drops mid-game and comes back: same private room, same match
+  await wait(50);
+  const back = await connect('Lu', 'solo', 'lu');
+  await waitFor(back, 'target');
+  await waitFor(back, 'end');
+  for (const ws of [back, rui]) sendTo(ws, { type: 'leave' });
+  await wait(50);
+  assert.strictEqual(soloRooms.size, 0, 'empty private rooms are removed');
+  for (const ws of [back, rui]) ws.close();
+});
+
 test('partida completa com várias salas', async () => {
   // bad messages must not crash the server (a crash would kill this test process too)
   const rogue = await connect('Rogue', 'roxa');
