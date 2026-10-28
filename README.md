@@ -2,7 +2,7 @@
 
 Provas de teclado e mouse para jogar com a turma, direto no navegador. Até **30 alunos por sala**, em **3 salas** ao mesmo tempo. Todos jogam a mesma prova durante um tempo fixo (2 minutos), cada um no seu ritmo, e quem fizer mais pontos vence.
 
-Feito para escola pública: não precisa instalar nada nos computadores dos alunos, não tem login e funciona em qualquer navegador atual.
+Feito para o laboratório de informática da escola pública: roda em computador com **mouse e teclado** (não é pensado para celular), não precisa instalar nada nos computadores dos alunos, não tem login e funciona em qualquer navegador atual.
 
 ## As provas
 
@@ -19,13 +19,15 @@ Para ser justo, **todos da sala recebem as mesmas palavras, letras, percursos e 
 ## Como jogar
 
 1. Abra o link do jogo, digite seu nome e **escolha a prova** nos cartões.
-2. **Escolha a sala** (Azul, Verde ou Roxa). Numa sala vazia, vale a prova que você escolheu. Numa sala com gente, vale a prova da turma, que pode ser trocada lá dentro antes de começar.
+2. **Escolha a sala** (Azul, Verde ou Roxa). Numa sala vazia, vale a prova que você escolheu. Numa sala com gente, vale a prova da turma. Só o **dono da sala** (quem entrou primeiro) pode trocar a prova lá dentro, antes de começar; se ele sair, o próximo da fila vira o dono.
 3. Todos clicam em **"Estou pronto!"**. A partida começa sozinha quando **todos** estão prontos, com uma contagem 3, 2, 1.
 4. No fim aparece um **pódio** com os 3 primeiros, e cada aluno vê a própria colocação.
 
 Outras regras:
 
+- O botão **Sair da sala**, no alto da tela, volta para a tela inicial.
 - Uma sala com partida em andamento fica **bloqueada** para quem chega. Se todos saírem, ela destrava na hora.
+- Um computador que "dorme" ou perde o Wi-Fi sem avisar sai da sala em até 1 minuto, para não travar o "todos prontos".
 - Se a internet cair ou alguém apertar F5, a página **reconecta sozinha** e o aluno volta para a mesma partida, com os mesmos pontos.
 - Nomes repetidos ganham um número ("Maria", "Maria 2").
 - Há trilha sonora e efeitos sonoros, todos gerados pelo navegador, sem arquivos de áudio. Os botões **Música** e **Efeitos** ligam e desligam cada um.
@@ -54,7 +56,10 @@ Os testes cobrem:
 - as regras de cada prova: tempo, pontos, pular e anti-trapaça;
 - que todo percurso do Leva o Lápis tem saída e que a largada, o ponto seguro e a chegada nunca são atingidos;
 - reconexão, nomes repetidos e salas isoladas;
-- que mensagens inválidas não derrubam o servidor.
+- que mensagens inválidas não derrubam o servidor;
+- que um aluno mandando mensagens demais não deixa as salas lentas;
+- que uma conexão "morta" é derrubada e destrava a sala;
+- que o código da página (`public/app.js`) não tem erro de sintaxe.
 
 ## Configuração
 
@@ -65,6 +70,7 @@ Variáveis de ambiente, todas opcionais:
 | `PORT` | `3000` | Porta do servidor (o Render define sozinho) |
 | `DURATION_MS` | `120000` | Duração da partida em milissegundos (120000 = 2 minutos) |
 | `COUNTDOWN_MS` | `3000` | Contagem "3, 2, 1" antes de começar |
+| `HEARTBEAT_MS` | `30000` | De quanto em quanto tempo o servidor confere se cada computador ainda está conectado |
 
 O texto da tela inicial lê a duração do servidor, então ele muda junto.
 

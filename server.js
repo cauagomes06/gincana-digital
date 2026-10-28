@@ -29,12 +29,25 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server, maxPayload: 1024 });
 wss.on('connection', (ws) => {
+  ws.alive = true;
+  ws.on('pong', () => { ws.alive = true; });
   game.connect(ws);
   ws.on('message', (raw) => game.message(ws, raw));
   ws.on('close', () => game.disconnect(ws));
   // without a listener, a bad frame (e.g. over maxPayload) throws and takes the whole server down; ws closes the socket itself
   ws.on('error', () => {});
 });
+
+// a laptop that sleeps or loses Wi-Fi never says goodbye, and a "not ready" ghost would block its room:
+// ping everyone and drop whoever didn't answer the previous ping (browsers answer on their own)
+const HEARTBEAT_MS = Number(process.env.HEARTBEAT_MS) || 30000;
+setInterval(() => {
+  for (const ws of wss.clients) {
+    if (!ws.alive) { ws.terminate(); continue; }
+    ws.alive = false;
+    ws.ping();
+  }
+}, HEARTBEAT_MS).unref();
 
 server.listen(PORT, () => console.log(`Jogo rodando em http://localhost:${PORT}`));
 module.exports = server;

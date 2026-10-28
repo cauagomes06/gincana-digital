@@ -119,7 +119,10 @@ const roomList = () => Object.entries(rooms).map(([id, r]) => ({ id, name: r.nam
 const roomsMsg = () => ({ type: 'rooms', rooms: roomList(), max: MAX_PLAYERS, duration: DURATION_MS });
 // only on join/leave/start/end: the lobby doesn't care about scores
 const sendRooms = () => { for (const ws of clients) send(ws, roomsMsg()); };
-const sendState = (room) => broadcast(room, { type: 'state', players: ranking(room), running: room.running, mode: room.mode });
+// only the student who has been in the room longest picks the prova, so one kid can't keep
+// switching it (each switch clears everyone's "pronto"). A Map keeps insertion order.
+const owner = (room) => room.players.values().next().value;
+const sendState = (room) => broadcast(room, { type: 'state', players: ranking(room), running: room.running, mode: room.mode, owner: owner(room)?.key });
 
 function shuffle(list) {
   const a = [...list];
@@ -223,6 +226,11 @@ function connect(ws) {
 }
 
 function message(ws, raw) {
+  // every message can make the server re-send the room's state to 30 students; a script spamming
+  // "pronto/não pronto" would slow every room down. No real hand gets near 30 per second.
+  const now = Date.now();
+  if (now - (ws.windowStart || 0) > 1000) { ws.windowStart = now; ws.count = 0; }
+  if (++ws.count > 30) return;
   let msg;
   try { msg = JSON.parse(raw); } catch { return; }
   if (!msg || typeof msg !== 'object') return; // e.g. "null" sent from the console used to crash the server
@@ -236,7 +244,7 @@ function message(ws, raw) {
   } else if (msg.type === 'ready' && player && !room.running) {
     player.ready = msg.ready === true;
     startIfAllReady(room);
-  } else if (msg.type === 'mode' && player && !room.running && Object.hasOwn(MODES, msg.mode)) {
+  } else if (msg.type === 'mode' && player && !room.running && player === owner(room) && Object.hasOwn(MODES, msg.mode)) {
     room.mode = msg.mode;
     for (const p of room.players.values()) p.ready = false; // everyone agrees again on the new prova
     sendState(room);

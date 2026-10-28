@@ -47,7 +47,6 @@ button { font: inherit; font-weight: 700; color: inherit; cursor: pointer; }
   box-shadow: 0 4px 0 var(--ink); transition: transform .08s;
 }
 .primary:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
-.primary:disabled { opacity: .45; cursor: default; }
 .primary[aria-pressed="true"] { background: #fff; color: var(--room); outline: 3px solid var(--room); }
 .lane .ok { color: var(--good); font-weight: 700; }
 .ghost { background: none; border: 2px solid var(--ink); border-radius: 999px; padding: 4px 14px; font-size: .9rem; line-height: 1.4; }
@@ -75,6 +74,7 @@ button { font: inherit; font-weight: 700; color: inherit; cursor: pointer; }
 .word {
   font-size: clamp(2.6rem, 11vw, 5.5rem); line-height: 1.1; margin: 8px 0; min-height: 1.1em;
   overflow-wrap: anywhere; letter-spacing: .02em;
+  user-select: none; /* a selected word could be dragged into the typing field */
 }
 .word .done { color: var(--room); background: linear-gradient(transparent 60%, var(--marker) 60% 92%, transparent 92%); }
 .word .wrong { color: var(--bad); }

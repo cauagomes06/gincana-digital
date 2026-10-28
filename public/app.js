@@ -516,7 +516,9 @@ $('guess').onkeydown = (e) => {
   if (e.key === 'Enter') send({ type: 'guess', word: $('guess').value });
   if (e.key === 'Escape') skip();
 };
-$('guess').onpaste = (e) => e.preventDefault(); // no copy-paste cheating
+// no copy-paste cheating, and no dragging the selected word into the field either
+$('guess').onpaste = (e) => e.preventDefault();
+$('guess').ondrop = (e) => e.preventDefault();
 
 // ---------- messages ----------
 function handle(msg) {
@@ -530,7 +532,7 @@ function handle(msg) {
       b.disabled = r.count >= msg.max || r.running;
       const name = document.createElement('strong'); name.textContent = r.name;
       const provaTag = document.createElement('small'); provaTag.textContent = `Prova: ${prova(r.mode).name}`;
-    const count = document.createElement('small'); count.textContent = `${r.count} de ${msg.max} alunos`;
+      const count = document.createElement('small'); count.textContent = `${r.count} de ${msg.max} alunos`;
       const status = document.createElement('small');
       status.textContent = r.running ? '🔒 Partida em andamento' : r.count >= msg.max ? 'Sala cheia' : 'Esperando alunos';
       b.append(name, provaTag, count, status);
@@ -581,14 +583,17 @@ function handle(msg) {
       li.querySelector('.score').textContent = p.score;
     });
     for (const [key, li] of lanes) if (!seen.has(key)) { li.remove(); lanes.delete(key); }
-  mode = msg.mode;
-  document.body.dataset.mode = mode;
-  for (const b of document.querySelectorAll('.mode')) b.setAttribute('aria-pressed', b.dataset.mode === mode);
-  $('modeHelp').textContent = prova(mode).help;
-  $('skipBtn').textContent = prova(mode).skip || '';
-  $('modes').classList.toggle('hidden', msg.running);
-  const me = msg.players.find((p) => p.key === myKey);
-  if (me && !msg.running) setReady(me.ready); // the server clears "pronto" when the prova changes
+    mode = msg.mode;
+    document.body.dataset.mode = mode;
+    for (const b of document.querySelectorAll('.mode')) b.setAttribute('aria-pressed', b.dataset.mode === mode);
+    // only the room's owner (first in) sees the prova buttons; the others are told who picks
+    const owner = msg.players.find((p) => p.key === msg.owner);
+    const isOwner = msg.owner === myKey;
+    $('modes').classList.toggle('hidden', msg.running || !isOwner);
+    $('modeHelp').textContent = (!isOwner && !msg.running && owner ? `Prova: ${prova(mode).name}, escolhida por ${owner.name}. ` : '') + prova(mode).help;
+    $('skipBtn').textContent = prova(mode).skip || '';
+    const me = msg.players.find((p) => p.key === myKey);
+    if (me && !msg.running) setReady(me.ready); // the server clears "pronto" when the prova changes
     $('readyBtn').parentElement.classList.toggle('hidden', msg.running);
     const readyCount = msg.players.filter((p) => p.ready).length;
     $('readyHint').textContent = `${readyCount} de ${msg.players.length} prontos. A partida começa quando todos estiverem prontos.`;

@@ -1,5 +1,5 @@
 // Ready-up, own pace, skip penalty, reconnect keeps score, duplicate names, room isolation, crash safety.
-process.env.PORT = 3999; process.env.DURATION_MS = 800; process.env.COUNTDOWN_MS = 20;
+process.env.PORT = 3999; process.env.DURATION_MS = 800; process.env.COUNTDOWN_MS = 20; process.env.HEARTBEAT_MS = 100;
 const { test } = require('node:test');
 const assert = require('assert');
 const WebSocket = require('ws');
@@ -46,11 +46,17 @@ test('Caça às Letras: clique valida tempo e ordem', async () => {
   const leo = await connect('Leo', 'verde', 'leo');
   const lia = await connect('Lia', 'verde', 'lia');
   await wait(50); // both joins processed before anyone is ready, or Leo would start alone
-  sendTo(leo, { type: 'ready', ready: true });
-  sendTo(lia, { type: 'mode', mode: 'caca' }); // changing the prova clears everyone's "pronto"
+  sendTo(lia, { type: 'ready', ready: true });
+  sendTo(lia, { type: 'mode', mode: 'caca' }); // only the owner (first in, Leo) picks the prova
   await wait(50);
-  assert.ok(leo.msgs.filter((m) => m.type === 'state').pop().players.every((p) => !p.ready));
-  sendTo(lia, { type: 'mode', mode: 'nao-existe' }); // ignored
+  let state = leo.msgs.filter((m) => m.type === 'state').pop();
+  assert.strictEqual(state.mode, 'digitacao');
+  assert.strictEqual(state.owner, state.players.find((p) => p.name === 'Leo').key);
+  sendTo(leo, { type: 'mode', mode: 'caca' }); // changing the prova clears everyone's "pronto"
+  await wait(50);
+  state = leo.msgs.filter((m) => m.type === 'state').pop();
+  assert.ok(state.mode === 'caca' && state.players.every((p) => !p.ready));
+  sendTo(leo, { type: 'mode', mode: 'nao-existe' }); // ignored
   for (const ws of [leo, lia]) sendTo(ws, { type: 'ready', ready: true });
 
   const t0 = await waitFor(leo, 'target');
@@ -198,6 +204,38 @@ test('quem entra numa sala vazia escolhe a prova', async () => {
   for (const ws of [ana, bia]) ws.send(JSON.stringify({ type: 'mode', mode: 'digitacao' }));
   await wait(50);
   for (const ws of [ana, bia]) { ws.send(JSON.stringify({ type: 'leave' })); ws.close(); }
+  await wait(50);
+});
+
+test('conexão morta sai da sala e destrava o início', async () => {
+  const ok = await connect('Ok', 'azul', 'alive');
+  // a laptop that went to sleep: connected, but never answers the server's ping
+  const ghost = await new Promise((resolve) => {
+    const ws = new WebSocket('ws://localhost:3999', { autoPong: false });
+    ws.on('error', () => {});
+    ws.on('open', () => { ws.send(JSON.stringify({ type: 'join', name: 'Ghost', room: 'azul', id: 'ghost' })); resolve(ws); });
+  });
+  await wait(50);
+  sendTo(ok, { type: 'ready', ready: true });
+  await wait(50);
+  assert.ok(!ok.msgs.some((m) => m.type === 'start'), 'Ghost is in the room and not ready yet');
+  await waitFor(ok, 'start'); // two heartbeats later the ghost is dropped and the room starts
+  assert.strictEqual(ghost.readyState, WebSocket.CLOSED);
+  sendTo(ok, { type: 'leave' });
+  await wait(50);
+  ok.close();
+});
+
+test('mensagens em excesso são ignoradas', async () => {
+  const spam = await connect('Spam', 'verde', 'spam');
+  const watcher = await connect('Vê', 'verde', 'watch');
+  await wait(1100); // start a fresh one-second window
+  watcher.msgs.length = 0;
+  for (let i = 0; i < 200; i++) sendTo(spam, { type: 'ready', ready: i % 2 === 0 });
+  await wait(300);
+  const states = watcher.msgs.filter((m) => m.type === 'state').length;
+  assert.ok(states <= 31, `room got ${states} updates from one spammer`);
+  for (const ws of [spam, watcher]) { sendTo(ws, { type: 'leave' }); ws.close(); }
   await wait(50);
 });
 
