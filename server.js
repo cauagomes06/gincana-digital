@@ -41,7 +41,9 @@ const rooms = {
   verde: { name: 'Sala Verde' },
   roxa: { name: 'Sala Roxa' },
 };
-for (const room of Object.values(rooms)) Object.assign(room, { players: new Map(), running: false, sequence: [], startsAt: 0 });
+// players are keyed by a secret id the browser keeps, so a dropped connection can rejoin with its score
+for (const room of Object.values(rooms)) Object.assign(room, { players: new Map(), running: false, sequence: [], startsAt: 0, endsAt: 0 });
+let nextKey = 1; // public player key, safe to show to everyone (the id is not)
 
 const page = fs.readFileSync(path.join(__dirname, 'index.html'));
 const server = http.createServer((req, res) => {
@@ -51,16 +53,16 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server, maxPayload: 1024 });
 
-const send = (ws, msg) => ws.readyState === 1 && ws.send(JSON.stringify(msg));
-const broadcast = (room, msg) => { for (const ws of room.players.keys()) send(ws, msg); };
-const ranking = (room) => [...room.players.values()].sort((a, b) => b.score - a.score);
+const send = (ws, msg) => ws && ws.readyState === 1 && ws.send(JSON.stringify(msg));
+const broadcast = (room, msg) => { for (const p of room.players.values()) send(p.ws, msg); };
+const ranking = (room) => [...room.players.values()]
+  .sort((a, b) => b.score - a.score)
+  .map((p) => ({ key: p.key, name: p.name, score: p.score, ready: p.ready, online: !!p.ws }));
 const roomList = () => Object.entries(rooms).map(([id, r]) => ({ id, name: r.name, count: r.players.size, running: r.running }));
 const roomsMsg = () => ({ type: 'rooms', rooms: roomList(), max: MAX_PLAYERS, duration: DURATION_MS });
+// only on join/leave/start/end: the lobby doesn't care about scores
 const sendRooms = () => { for (const ws of wss.clients) send(ws, roomsMsg()); };
-const sendState = (room) => {
-  broadcast(room, { type: 'state', players: ranking(room), running: room.running });
-  sendRooms();
-};
+const sendState = (room) => broadcast(room, { type: 'state', players: ranking(room), running: room.running });
 
 function shuffle(list) {
   const a = [...list];
@@ -75,9 +77,14 @@ const wordFor = (room, player) => room.sequence[player.index % room.sequence.len
 
 function endGame(room) {
   room.running = false;
-  for (const p of room.players.values()) p.ready = false;
-  broadcast(room, { type: 'end', ranking: ranking(room) });
+  const final = ranking(room); // before cleanup: a student who dropped still keeps their place
+  for (const [id, p] of room.players) {
+    if (p.ws) p.ready = false;
+    else room.players.delete(id); // dropped and never came back
+  }
+  broadcast(room, { type: 'end', ranking: final });
   sendState(room);
+  sendRooms();
 }
 
 // starts once every player in the room pressed "pronto"
@@ -85,21 +92,57 @@ function startIfAllReady(room) {
   const players = [...room.players.values()];
   if (room.running || !players.length || !players.every((p) => p.ready)) return sendState(room);
   for (const p of players) Object.assign(p, { score: 0, index: 0 });
-  Object.assign(room, { running: true, sequence: shuffle(WORDS), startsAt: Date.now() + COUNTDOWN_MS });
+  const startsAt = Date.now() + COUNTDOWN_MS;
+  Object.assign(room, { running: true, sequence: shuffle(WORDS), startsAt, endsAt: startsAt + DURATION_MS });
   broadcast(room, { type: 'start', countdown: COUNTDOWN_MS, duration: DURATION_MS });
   sendState(room);
+  sendRooms();
   setTimeout(() => {
-    for (const [ws, p] of room.players) send(ws, { type: 'word', word: wordFor(room, p) });
+    for (const p of room.players.values()) send(p.ws, { type: 'word', word: wordFor(room, p) });
     setTimeout(() => endGame(room), DURATION_MS);
   }, COUNTDOWN_MS);
 }
 
-function leave(ws) {
-  const room = ws.room;
+// quit = pressed "Trocar de sala"; otherwise the connection dropped
+function leave(ws, quit) {
+  const { room, player } = ws;
   if (!room) return;
-  room.players.delete(ws);
-  ws.room = null;
+  ws.room = ws.player = null;
+  if (room.running && !quit) player.ws = null; // keep the score so they can come back
+  else room.players.delete(player.id);
+  sendRooms();
   startIfAllReady(room);
+}
+
+function join(ws, msg) {
+  const target = Object.hasOwn(rooms, msg.room) && rooms[msg.room];
+  const id = String(msg.id || '').slice(0, 40);
+  if (!target || !id) return;
+  let player = target.players.get(id);
+  if (player) {
+    // same browser coming back: take over the old connection, keep score and position
+    if (player.ws) { player.ws.room = player.ws.player = null; player.ws.close(); }
+  } else {
+    if (target.players.size >= MAX_PLAYERS) return send(ws, { type: 'error', message: `${target.name} está cheia. Escolha outra sala.` });
+    if (target.running) return send(ws, { type: 'error', message: `${target.name} já está jogando. Espere a partida acabar ou escolha outra sala.` });
+    const base = String(msg.name || '').trim().slice(0, 20) || 'Aluno';
+    const taken = new Set([...target.players.values()].map((p) => p.name));
+    let name = base;
+    for (let n = 2; taken.has(name); n++) name = `${base} ${n}`;
+    player = { id, key: nextKey++, name, score: 0, ready: false, index: 0, lastSkip: 0 };
+    target.players.set(id, player);
+  }
+  player.ws = ws;
+  ws.room = target;
+  ws.player = player;
+  send(ws, { type: 'joined', room: msg.room, name: target.name, key: player.key });
+  if (target.running) {
+    const now = Date.now();
+    send(ws, { type: 'start', countdown: Math.max(0, target.startsAt - now), duration: target.endsAt - Math.max(now, target.startsAt) });
+    if (now >= target.startsAt) send(ws, { type: 'word', word: wordFor(target, player) });
+  }
+  sendState(target);
+  sendRooms();
 }
 
 wss.on('connection', (ws) => {
@@ -108,33 +151,32 @@ wss.on('connection', (ws) => {
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
-    const room = ws.room;
-    const player = room && room.players.get(ws);
+    const { room, player } = ws;
+    const playing = player && room.running && Date.now() >= room.startsAt;
 
     if (msg.type === 'join' && !room) {
-      const target = Object.hasOwn(rooms, msg.room) && rooms[msg.room];
-      if (!target) return;
-      if (target.players.size >= MAX_PLAYERS) return send(ws, { type: 'error', message: `${target.name} está cheia. Escolha outra sala.` });
-      if (target.running) return send(ws, { type: 'error', message: `${target.name} já está jogando. Espere a partida acabar ou escolha outra sala.` });
-      const name = String(msg.name || '').trim().slice(0, 20) || 'Aluno';
-      target.players.set(ws, { name, score: 0, ready: false, index: 0 });
-      ws.room = target;
-      send(ws, { type: 'joined', room: msg.room, name: target.name });
-      sendState(target);
+      join(ws, msg);
     } else if (msg.type === 'leave') {
-      leave(ws);
+      leave(ws, true);
     } else if (msg.type === 'ready' && player && !room.running) {
       player.ready = msg.ready === true;
       startIfAllReady(room);
-    } else if (msg.type === 'guess' && player && room.running && Date.now() >= room.startsAt && normalize(msg.word) === wordFor(room, player)) {
+    } else if (msg.type === 'guess' && playing && normalize(msg.word) === wordFor(room, player)) {
       player.score++;
       player.index++;
       send(ws, { type: 'word', word: wordFor(room, player) });
       sendState(room);
+    } else if (msg.type === 'skip' && playing && Date.now() - player.lastSkip > 300) {
+      // skipping costs a point; the throttle stops a held key from flooding the room
+      player.lastSkip = Date.now();
+      player.score--;
+      player.index++;
+      send(ws, { type: 'word', word: wordFor(room, player), skipped: true });
+      sendState(room);
     }
   });
 
-  ws.on('close', () => leave(ws));
+  ws.on('close', () => leave(ws, false));
 });
 
 server.listen(PORT, () => console.log(`Jogo rodando em http://localhost:${PORT}`));
