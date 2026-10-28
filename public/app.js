@@ -33,11 +33,11 @@ function runClock(countdownMs, durationMs) {
     if (now < startAt) {
       const n = Math.ceil((startAt - now) / 1000);
       if (n !== lastBeep) { lastBeep = n; $('word').textContent = n; SFX.tick(); }
-      $('clock').textContent = `⏱ ${clockText(Math.ceil(durationMs / 1000))}`;
+      $('clockTime').textContent = clockText(Math.ceil(durationMs / 1000));
       return;
     }
     const left = Math.max(0, Math.ceil((endAt - now) / 1000));
-    $('clock').textContent = `⏱ ${clockText(left)}`;
+    $('clockTime').textContent = clockText(left);
     $('clock').classList.toggle('hurry', left <= 10);
     if (left <= 5 && left > 0 && left !== lastBeep) { lastBeep = left; SFX.tick(); }
     if (!left) stopClock();
@@ -159,7 +159,7 @@ function showLobby() {
   stopClock();
   clearArena();
   word = '';
-  $('clock').textContent = '';
+  $('clockTime').textContent = '';
   lanes.clear();
   $('scores').replaceChildren();
   document.body.removeAttribute('data-room');
@@ -241,7 +241,7 @@ function handle(msg) {
     $('game').classList.remove('hidden');
     word = '';
     $('word').textContent = '';
-    $('clock').textContent = '';
+    $('clockTime').textContent = '';
     $('info').textContent = 'Clique em "Estou pronto!" quando estiver preparado.';
     $('skipBtn').classList.add('hidden');
     setReady(false);
@@ -256,7 +256,7 @@ function handle(msg) {
       if (!li) {
         li = document.createElement('li');
         li.className = 'lane';
-        li.innerHTML = '<span class="name"><span class="label"></span><span class="ok" aria-label="pronto"></span></span><span class="road"><span class="car"></span></span><span class="score"></span>';
+        li.innerHTML = '<span class="name"><span class="label"></span><span class="ok" aria-label="pronto"></span></span><span class="road"><span class="car"></span><svg class="flag" aria-hidden="true"><use href="#i-flag-checkered"/></svg></span><span class="score"></span>';
         li.querySelector('.label').textContent = p.name;
         li.querySelector('.car').textContent = [...p.name][0].toUpperCase(); // spread keeps emoji whole
         lanes.set(p.key, li);
@@ -329,7 +329,7 @@ function handle(msg) {
   } else if (msg.type === 'end') {
     stopClock();
     clearArena();
-    $('clock').textContent = 'Tempo esgotado!';
+    $('clockTime').textContent = 'Tempo esgotado!';
     word = '';
     const placeOf = (p) => 1 + msg.ranking.filter((o) => o.score > p.score).length; // ties share a place
     const pts = (n) => `${n} ${Math.abs(n) === 1 ? 'ponto' : 'pontos'}`;
