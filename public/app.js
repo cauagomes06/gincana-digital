@@ -108,7 +108,9 @@ const SFX = {
   correct: () => sfx([72, 79, 84], 0.06, 0.16, 'triangle', 0.8),
   tick: () => sfx([90], 0, 0.05, 'square', 0.3),
   join: () => sfx([60, 67, 72], 0.07, 0.14, 'triangle', 0.8),
-  thud: () => sfx([48], 0, 0.08, 'triangle', 0.7),
+  // mid-range on purpose: cheap classroom speakers barely play anything below ~200 Hz
+  missClick: () => sfx([64, 58], 0.06, 0.1, 'square', 0.6), // "bzz-bzz": clicked the paper, not the letter
+  timeout: () => sfx([72, 67, 62, 55], 0.08, 0.14, 'sawtooth', 0.45), // falling "wom-wom": the letter got away
   end: () => sfx([72, 72, 72, 76, 79, 76, 79, 84], 0.13, 0.22),
 };
 $('musicBtn').onclick = () => { prefs.music = !prefs.music; applySound(); };
@@ -173,7 +175,7 @@ const skip = () => { if (word) send({ type: 'skip' }); };
 $('skipBtn').onclick = () => { skip(); $('guess').focus(); };
 for (const b of document.querySelectorAll('.mode')) b.onclick = () => send({ type: 'mode', mode: b.dataset.mode });
 // a click on the empty paper is a miss: no penalty, just a sound so students notice
-$('arena').onclick = (e) => { if (e.target === $('arena')) SFX.thud(); };
+$('arena').onclick = (e) => { if (e.target === $('arena')) SFX.missClick(); };
 $('readyBtn').onclick = () => {
   setReady(!myReady);
   send({ type: 'ready', ready: myReady });
@@ -310,7 +312,7 @@ function handle(msg) {
     targetTimer = setTimeout(() => {
       b.remove();
       send({ type: 'miss', index: msg.index });
-      SFX.thud();
+      SFX.timeout();
     }, msg.life);
   } else if (msg.type === 'word') {
     const first = !word;
