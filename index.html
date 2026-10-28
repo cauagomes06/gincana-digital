@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Corrida de Digitação</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #14161c; color: #eee; margin: 0; padding: 16px; }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { text-align: center; }
+  input, button { font-size: 1.2rem; padding: 10px; border-radius: 8px; border: none; }
+  input { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
+  button { background: #4f8cff; color: #fff; cursor: pointer; width: 100%; }
+  button:disabled { opacity: .5; cursor: default; }
+  #word { font-size: 2.5rem; text-align: center; letter-spacing: 2px; margin: 24px 0 8px; color: #ffd84f; min-height: 3rem; }
+  #info { text-align: center; min-height: 1.5rem; color: #aaa; }
+  ol { background: #1e2129; border-radius: 8px; padding: 12px 12px 12px 40px; }
+  li { padding: 4px 0; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>⌨️ Corrida de Digitação</h1>
+
+  <section id="join">
+    <input id="name" maxlength="20" placeholder="Seu nome" aria-label="Seu nome" autofocus>
+    <button id="joinBtn">Entrar</button>
+  </section>
+
+  <section id="game" class="hidden">
+    <div id="round" style="text-align:center"></div>
+    <div id="word" aria-live="polite"></div>
+    <div id="info" aria-live="polite"></div>
+    <input id="guess" placeholder="Digite a palavra e aperte Enter" aria-label="Digite a palavra" autocomplete="off" disabled>
+    <button id="startBtn">Iniciar partida</button>
+    <h2>Placar</h2>
+    <ol id="scores"></ol>
+  </section>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  const send = (msg) => ws.send(JSON.stringify(msg));
+
+  function join() {
+    send({ type: 'join', name: $('name').value });
+    $('join').classList.add('hidden');
+    $('game').classList.remove('hidden');
+  }
+  $('joinBtn').onclick = join;
+  $('name').onkeydown = (e) => e.key === 'Enter' && join();
+  $('startBtn').onclick = () => send({ type: 'start' });
+  $('guess').onkeydown = (e) => {
+    if (e.key !== 'Enter') return;
+    send({ type: 'guess', word: $('guess').value });
+    $('guess').value = '';
+  };
+  $('guess').onpaste = (e) => e.preventDefault(); // no copy-paste cheating
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'state') {
+      $('scores').replaceChildren(...msg.players.map((p) => {
+        const li = document.createElement('li');
+        li.textContent = `${p.name} — ${p.score} pts`;
+        return li;
+      }));
+      $('startBtn').disabled = msg.running;
+      $('round').textContent = msg.running ? `Rodada ${msg.round}/${msg.rounds}` : `${msg.players.length}/30 jogadores na sala`;
+    } else if (msg.type === 'word') {
+      $('word').textContent = msg.word;
+      $('info').textContent = 'Valendo!';
+      $('guess').disabled = false;
+      $('guess').focus();
+    } else if (msg.type === 'winner') {
+      $('word').textContent = '';
+      $('info').textContent = `${msg.name} acertou primeiro! +1 ponto`;
+      $('guess').disabled = true;
+    } else if (msg.type === 'end') {
+      const top = msg.ranking[0];
+      $('word').textContent = '🏆 Fim de jogo';
+      $('info').textContent = top ? `Vencedor: ${top.name} com ${top.score} pts` : '';
+      $('guess').disabled = true;
+    } else if (msg.type === 'error') {
+      alert(msg.message);
+    }
+  };
+  ws.onclose = () => { $('info').textContent = 'Conexão perdida. Recarregue a página.'; };
+</script>
+</body>
+</html>
