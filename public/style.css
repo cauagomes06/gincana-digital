@@ -2,11 +2,15 @@
   --paper: #FAFBF6; --line: #C9DBEF; --margin: #E8505B; --ink: #1D2B53; --muted: #5B6785;
   --marker: #FFE14D; --good: #179C5B; --bad: #E8505B;
   --azul: #2D6CDF; --verde: #179C5B; --roxa: #7B4FD6;
+  --laranja: #C2570A; --rosa: #C2307A; --turquesa: #0E7C8C; /* dark enough for white text */
   --room: var(--ink); --margin-x: 64px; --rule: 32px;
 }
 body[data-room="azul"] { --room: var(--azul); }
 body[data-room="verde"] { --room: var(--verde); }
 body[data-room="roxa"] { --room: var(--roxa); }
+body[data-room="laranja"] { --room: var(--laranja); }
+body[data-room="rosa"] { --room: var(--rosa); }
+body[data-room="turquesa"] { --room: var(--turquesa); }
 
 * { box-sizing: border-box; }
 body {

@@ -253,7 +253,7 @@ test('jogar sozinho: sala particular, fora da lista, apagada no fim', async () =
   assert.deepStrictEqual(state.players.map((p) => p.name), ['Lu']);
   assert.strictEqual(state.mode, 'caca');
   const { rooms } = lu.msgs.filter((m) => m.type === 'rooms').pop();
-  assert.deepStrictEqual(rooms.map((r) => r.id), ['azul', 'verde', 'roxa']); // not in the lobby
+  assert.deepStrictEqual(rooms.map((r) => r.id), ['azul', 'verde', 'roxa', 'laranja', 'rosa', 'turquesa']); // solo is not in the lobby
   assert.strictEqual(rooms.reduce((n, r) => n + r.count, 0), 0, 'solo players take no seat in the rooms');
 
   sendTo(lu, { type: 'ready', ready: true }); // alone, "pronto" starts at once
@@ -342,7 +342,7 @@ test('partida completa com várias salas', async () => {
   assert.deepStrictEqual(ranking.map((p) => [p.name, p.score, p.online]), [['Bia', 2, true], ['Ana', 1, true], ['Eva', 0, false]]);
   assert.ok(!caio.msgs.some((m) => m.type === 'word'), 'room verde must not receive azul words');
   const { rooms } = caio.msgs.filter((m) => m.type === 'rooms').pop();
-  assert.deepStrictEqual(rooms.map((r) => [r.count, r.running]), [[2, false], [1, false], [0, false]]);
+  assert.deepStrictEqual(rooms.map((r) => [r.count, r.running]), [[2, false], [1, false], [0, false], [0, false], [0, false], [0, false]]);
   for (const ws of [ana, bia, caio, late, twin, tabA, tabB]) ws.close();
   server.close();
 });

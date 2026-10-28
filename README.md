@@ -1,6 +1,6 @@
 # Gincana Digital
 
-Provas de teclado e mouse para jogar com a turma, direto no navegador. Até **30 alunos por sala**, em **3 salas** ao mesmo tempo. Todos jogam a mesma prova durante um tempo fixo (2 minutos), cada um no seu ritmo, e quem fizer mais pontos vence.
+Provas de teclado e mouse para jogar com a turma, direto no navegador. Até **30 alunos por sala**, em **6 salas** ao mesmo tempo, além do treino sozinho. Todos jogam a mesma prova durante um tempo fixo (2 minutos), cada um no seu ritmo, e quem fizer mais pontos vence.
 
 Feito para o laboratório de informática da escola pública: roda em computador com **mouse e teclado** (não é pensado para celular), não precisa instalar nada nos computadores dos alunos, não tem login e funciona em qualquer navegador atual.
 
@@ -20,7 +20,7 @@ Para ser justo, **todos da sala recebem as mesmas palavras, letras, percursos e 
 
 1. Abra o link do jogo, digite seu nome e **escolha a prova** nos cartões.
    - Para **treinar sozinho**, clique em **Jogar sozinho**. O nome é opcional, ninguém mais entra e a vaga nas salas não é ocupada. No fim aparecem só os seus pontos.
-2. **Escolha a sala** (Azul, Verde ou Roxa). Numa sala vazia, vale a prova que você escolheu. Numa sala com gente, vale a prova da turma. Só o **dono da sala** (quem entrou primeiro) pode trocar a prova lá dentro, antes de começar; se ele sair, o próximo da fila vira o dono.
+2. **Escolha a sala** (Azul, Verde, Roxa, Laranja, Rosa ou Turquesa). Numa sala vazia, vale a prova que você escolheu. Numa sala com gente, vale a prova da turma. Só o **dono da sala** (quem entrou primeiro) pode trocar a prova lá dentro, antes de começar; se ele sair, o próximo da fila vira o dono.
 3. Todos clicam em **"Estou pronto!"**. A partida começa sozinha quando **todos** estão prontos, com uma contagem 3, 2, 1.
 4. No fim aparece um **pódio** com os 3 primeiros, e cada aluno vê a própria colocação.
 

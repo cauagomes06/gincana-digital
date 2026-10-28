@@ -1,5 +1,8 @@
 const $ = (id) => document.getElementById(id);
-const ROOM_COLORS = { azul: 'var(--azul)', verde: 'var(--verde)', roxa: 'var(--roxa)' };
+const ROOM_COLORS = {
+  azul: 'var(--azul)', verde: 'var(--verde)', roxa: 'var(--roxa)',
+  laranja: 'var(--laranja)', rosa: 'var(--rosa)', turquesa: 'var(--turquesa)',
+};
 let ws, myKey, word = '', lastGood = true, clockTimer, myReady = false, replaced = false;
 let mode = 'digitacao', targetTimer;
 // one entry per prova: drives the home-screen cards, the in-room picker and the help text

@@ -102,7 +102,10 @@ const FINISH_MODES = ['lapis', 'monta']; // the student reports "done"; the serv
 const normalize = (s) => String(s).trim().toLowerCase().normalize('NFC');
 // players are keyed by a secret id the browser keeps, so a dropped connection can rejoin with its score
 const makeRoom = (name) => ({ name, players: new Map(), mode: 'digitacao', running: false, sequence: [], startsAt: 0, endsAt: 0 });
-const rooms = { azul: makeRoom('Sala Azul'), verde: makeRoom('Sala Verde'), roxa: makeRoom('Sala Roxa') };
+const rooms = {
+  azul: makeRoom('Sala Azul'), verde: makeRoom('Sala Verde'), roxa: makeRoom('Sala Roxa'),
+  laranja: makeRoom('Sala Laranja'), rosa: makeRoom('Sala Rosa'), turquesa: makeRoom('Sala Turquesa'),
+};
 // "Jogar sozinho": a private room per browser id, never listed in the lobby, removed once empty
 const soloRooms = new Map();
 const dropIfEmptySolo = (room) => { if (room.soloId && !room.players.size) soloRooms.delete(room.soloId); };
