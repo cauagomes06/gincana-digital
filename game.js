@@ -4,6 +4,22 @@ const WORDS = require('./words');
 const MAX_PLAYERS = 30;
 const DURATION_MS = Number(process.env.DURATION_MS) || 120000; // match length
 const COUNTDOWN_MS = Number(process.env.COUNTDOWN_MS ?? 3000); // "3, 2, 1" before the first word
+const MIN_REACTION_MS = 150; // a "hit" faster than this after the target appeared comes from a script, not a hand
+
+// Caça às Letras: targets get smaller and vanish faster the further a student goes
+const LETTERS = 'ABCDEFGHIJLMNOPQRSTUVXZ';
+const makeTargets = () => Array.from({ length: 300 }, (_, i) => ({
+  x: 0.06 + Math.random() * 0.88, // position as a fraction of the play area
+  y: 0.08 + Math.random() * 0.84,
+  letter: LETTERS[Math.floor(Math.random() * LETTERS.length)],
+  size: Math.max(40, 96 - i * 2), // px
+  life: Math.max(800, 2200 - i * 40), // ms on screen
+}));
+// each mode builds the list every player in the room goes through, in the same order
+const MODES = {
+  digitacao: () => shuffle(WORDS),
+  caca: makeTargets,
+};
 
 const normalize = (s) => String(s).trim().toLowerCase().normalize('NFC');
 const rooms = {
@@ -12,7 +28,7 @@ const rooms = {
   roxa: { name: 'Sala Roxa' },
 };
 // players are keyed by a secret id the browser keeps, so a dropped connection can rejoin with its score
-for (const room of Object.values(rooms)) Object.assign(room, { players: new Map(), running: false, sequence: [], startsAt: 0, endsAt: 0 });
+for (const room of Object.values(rooms)) Object.assign(room, { players: new Map(), mode: 'digitacao', running: false, sequence: [], startsAt: 0, endsAt: 0 });
 let nextKey = 1; // public player key, safe to show to everyone (the id is not)
 const clients = new Set(); // every open socket, in a room or still in the lobby
 
@@ -21,11 +37,11 @@ const broadcast = (room, msg) => { for (const p of room.players.values()) send(p
 const ranking = (room) => [...room.players.values()]
   .sort((a, b) => b.score - a.score)
   .map((p) => ({ key: p.key, name: p.name, score: p.score, ready: p.ready, online: !!p.ws }));
-const roomList = () => Object.entries(rooms).map(([id, r]) => ({ id, name: r.name, count: r.players.size, running: r.running }));
+const roomList = () => Object.entries(rooms).map(([id, r]) => ({ id, name: r.name, mode: r.mode, count: r.players.size, running: r.running }));
 const roomsMsg = () => ({ type: 'rooms', rooms: roomList(), max: MAX_PLAYERS, duration: DURATION_MS });
 // only on join/leave/start/end: the lobby doesn't care about scores
 const sendRooms = () => { for (const ws of clients) send(ws, roomsMsg()); };
-const sendState = (room) => broadcast(room, { type: 'state', players: ranking(room), running: room.running });
+const sendState = (room) => broadcast(room, { type: 'state', players: ranking(room), running: room.running, mode: room.mode });
 
 function shuffle(list) {
   const a = [...list];
@@ -35,8 +51,14 @@ function shuffle(list) {
   }
   return a;
 }
-// everyone in the room gets the same words in the same order, each at their own pace
-const wordFor = (room, player) => room.sequence[player.index % room.sequence.length];
+// everyone in the room gets the same items in the same order, each at their own pace
+const current = (room, player) => room.sequence[player.index % room.sequence.length];
+function sendChallenge(room, player, extra) {
+  player.shownAt = Date.now();
+  const item = current(room, player);
+  if (room.mode === 'caca') send(player.ws, { type: 'target', index: player.index, ...item });
+  else send(player.ws, { type: 'word', word: item, ...extra });
+}
 
 function endGame(room) {
   clearTimeout(room.timer); // the game may end early; its pending timer must not end the next one
@@ -57,12 +79,12 @@ function startIfAllReady(room) {
   if (room.running || !players.length || !players.every((p) => p.ready)) return sendState(room);
   for (const p of players) Object.assign(p, { score: 0, index: 0 });
   const startsAt = Date.now() + COUNTDOWN_MS;
-  Object.assign(room, { running: true, sequence: shuffle(WORDS), startsAt, endsAt: startsAt + DURATION_MS });
+  Object.assign(room, { running: true, sequence: MODES[room.mode](), startsAt, endsAt: startsAt + DURATION_MS });
   broadcast(room, { type: 'start', countdown: COUNTDOWN_MS, duration: DURATION_MS });
   sendState(room);
   sendRooms();
   room.timer = setTimeout(() => {
-    for (const p of room.players.values()) send(p.ws, { type: 'word', word: wordFor(room, p) });
+    for (const p of room.players.values()) sendChallenge(room, p);
     room.timer = setTimeout(() => endGame(room), DURATION_MS);
   }, COUNTDOWN_MS);
 }
@@ -108,7 +130,7 @@ function join(ws, msg) {
   if (target.running) {
     const now = Date.now();
     send(ws, { type: 'start', countdown: Math.max(0, target.startsAt - now), duration: target.endsAt - Math.max(now, target.startsAt) });
-    if (now >= target.startsAt) send(ws, { type: 'word', word: wordFor(target, player) });
+    if (now >= target.startsAt) sendChallenge(target, player);
   }
   sendState(target);
   sendRooms();
@@ -133,18 +155,38 @@ function message(ws, raw) {
   } else if (msg.type === 'ready' && player && !room.running) {
     player.ready = msg.ready === true;
     startIfAllReady(room);
-  } else if (msg.type === 'guess' && playing && normalize(msg.word) === wordFor(room, player)) {
-    player.score++;
-    player.index++;
-    send(ws, { type: 'word', word: wordFor(room, player) });
+  } else if (msg.type === 'mode' && player && !room.running && Object.hasOwn(MODES, msg.mode)) {
+    room.mode = msg.mode;
+    for (const p of room.players.values()) p.ready = false; // everyone agrees again on the new prova
     sendState(room);
-  } else if (msg.type === 'skip' && playing && Date.now() - player.lastSkip > 300) {
-    // skipping costs a point; the throttle stops a held key from flooding the room
-    player.lastSkip = Date.now();
-    player.score--;
-    player.index++;
-    send(ws, { type: 'word', word: wordFor(room, player), skipped: true });
-    sendState(room);
+    sendRooms();
+  } else if (!playing) {
+    // everything below only counts during a match
+  } else if (room.mode === 'digitacao') {
+    if (msg.type === 'guess' && normalize(msg.word) === current(room, player)) {
+      player.score++;
+      player.index++;
+      sendChallenge(room, player);
+      sendState(room);
+    } else if (msg.type === 'skip' && Date.now() - player.lastSkip > 300) {
+      // skipping costs a point; the throttle stops a held key from flooding the room
+      player.lastSkip = Date.now();
+      player.score--;
+      player.index++;
+      sendChallenge(room, player, { skipped: true });
+      sendState(room);
+    }
+  } else if (room.mode === 'caca' && msg.index === player.index) {
+    const age = Date.now() - player.shownAt;
+    if (msg.type === 'hit' && age >= MIN_REACTION_MS && age <= current(room, player).life + 500) {
+      player.score++;
+      player.index++;
+      sendChallenge(room, player);
+      sendState(room);
+    } else if (msg.type === 'miss') { // the letter vanished: next one, no point
+      player.index++;
+      sendChallenge(room, player);
+    }
   }
 }
 

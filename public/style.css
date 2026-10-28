@@ -107,11 +107,37 @@ button { font: inherit; font-weight: 700; color: inherit; cursor: pointer; }
 .podium .p2 { min-height: 100px; }
 .podium .p3 { min-height: 80px; }
 #skipBtn { margin: 10px auto 0; }
+.word:empty { min-height: 0; margin: 0; } /* Caça às Letras leaves it empty during play */
+
+/* prova picker */
+.modes { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.mode { background: #fff; color: var(--room); border: 3px solid var(--room); border-radius: 10px; padding: 6px 16px; }
+.mode[aria-pressed="true"] { background: var(--room); color: #fff; }
+#modeHelp { margin: 8px auto 12px; }
+body[data-mode="caca"] #guess, body[data-mode="caca"] #skipBtn { display: none !important; }
+
+/* Caça às Letras: the shrinking ring shows how long the letter stays */
+.arena {
+  position: relative; height: 380px; margin: 8px 0; overflow: hidden; cursor: crosshair;
+  border: 3px dashed var(--room); border-radius: 12px; background: rgba(255, 255, 255, .6);
+}
+.target {
+  position: absolute; transform: translate(-50%, -50%); width: var(--size); height: var(--size);
+  border: 0; border-radius: 50%; background: var(--room); color: #fff; box-shadow: 0 4px 0 var(--ink);
+  font: calc(var(--size) * .5)/1 'Lilita One', system-ui, sans-serif;
+}
+.target::after {
+  content: ''; position: absolute; inset: -8px; border-radius: 50%; border: 4px solid var(--marker);
+  animation: lifetime var(--life) linear forwards;
+}
+.target:disabled { opacity: .4; }
+@keyframes lifetime { to { transform: scale(.55); border-color: var(--bad); } }
 
 @media (max-width: 560px) {
   :root { --margin-x: 28px; }
   main { padding-left: calc(var(--margin-x) + 14px); padding-right: 16px; }
   .lane { grid-template-columns: 80px 1fr 3ch; }
+  .arena { height: 300px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

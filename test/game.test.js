@@ -38,6 +38,40 @@ const waitFor = (ws, type) => new Promise((resolve) => {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const sendTo = (ws, msg) => ws.send(JSON.stringify(msg));
 
+test('Caça às Letras: clique valida tempo e ordem', async () => {
+  const leo = await connect('Leo', 'verde', 'leo');
+  const lia = await connect('Lia', 'verde', 'lia');
+  await wait(50); // both joins processed before anyone is ready, or Leo would start alone
+  sendTo(leo, { type: 'ready', ready: true });
+  sendTo(lia, { type: 'mode', mode: 'caca' }); // changing the prova clears everyone's "pronto"
+  await wait(50);
+  assert.ok(leo.msgs.filter((m) => m.type === 'state').pop().players.every((p) => !p.ready));
+  sendTo(lia, { type: 'mode', mode: 'nao-existe' }); // ignored
+  for (const ws of [leo, lia]) sendTo(ws, { type: 'ready', ready: true });
+
+  const t0 = await waitFor(leo, 'target');
+  assert.strictEqual(t0.index, 0);
+  assert.strictEqual((await waitFor(lia, 'target')).letter, t0.letter, 'same targets for everyone');
+  sendTo(leo, { type: 'hit', index: 0 }); // too fast to be a human
+  await wait(170);
+  sendTo(leo, { type: 'hit', index: 5 }); // wrong target
+  sendTo(leo, { type: 'hit', index: 0 });
+  const t1 = await waitFor(leo, 'target');
+  assert.strictEqual(t1.index, 1);
+  assert.ok(t1.size <= t0.size && t1.life <= t0.life, 'targets get harder');
+  sendTo(leo, { type: 'miss', index: 1 }); // vanished: next target, no point
+  assert.strictEqual((await waitFor(leo, 'target')).index, 2);
+  sendTo(leo, { type: 'guess', word: 'qualquer' }); // typing messages do nothing here
+
+  const { ranking } = await waitFor(leo, 'end');
+  assert.deepStrictEqual(ranking.map((p) => [p.name, p.score]), [['Leo', 1], ['Lia', 0]]);
+  sendTo(leo, { type: 'mode', mode: 'digitacao' }); // leave the room as the next test expects
+  await wait(50);
+  for (const ws of [leo, lia]) sendTo(ws, { type: 'leave' });
+  await wait(50);
+  for (const ws of [leo, lia]) ws.close();
+});
+
 test('partida completa com várias salas', async () => {
   // bad messages must not crash the server (a crash would kill this test process too)
   const rogue = await connect('Rogue', 'roxa');

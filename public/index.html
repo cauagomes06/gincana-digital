@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Corrida das Letras</title>
+<title>Gincana Digital</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Lilita+One&display=swap" rel="stylesheet">
@@ -12,8 +12,8 @@
 <body>
 <main>
   <section id="lobby">
-    <h1><span>Corrida das Letras</span></h1>
-    <p class="muted">Todos recebem as mesmas palavras e cada um digita no seu ritmo. Cada palavra certa vale 1 ponto. Quando o tempo de <span id="duration">2 minutos</span> acabar, vence quem fez mais pontos.</p>
+    <h1><span>Gincana Digital</span></h1>
+    <p class="muted">Provas de teclado e mouse para a turma. Entre numa sala, escolham a prova e cliquem em "pronto". Quando o tempo de <span id="duration">2 minutos</span> acabar, vence quem fez mais pontos.</p>
 
     <label for="name">Seu nome</label>
     <input id="name" maxlength="20" autocomplete="off" placeholder="Ex.: Maria do 8º B" autofocus>
@@ -32,11 +32,18 @@
       <button class="ghost" id="leaveBtn">Trocar de sala</button>
     </div>
 
+    <div class="modes" id="modes" role="group" aria-label="Prova">
+      <button class="mode" data-mode="digitacao" aria-pressed="true">⌨️ Corrida das Letras</button>
+      <button class="mode" data-mode="caca" aria-pressed="false">🖱️ Caça às Letras</button>
+    </div>
+    <p class="muted" id="modeHelp"></p>
+
     <div class="clock" id="clock" role="timer"></div>
     <div class="word" id="word" aria-live="polite"></div>
     <p id="info" aria-live="polite"></p>
     <input id="guess" maxlength="30" placeholder="Digite a palavra aqui" aria-label="Digite a palavra" autocomplete="off" autocapitalize="off" spellcheck="false" disabled>
     <button class="ghost hidden" id="skipBtn">Pular palavra (−1 ponto) · Esc</button>
+    <div class="arena hidden" id="arena" aria-label="Área da Caça às Letras"></div>
     <div class="controls">
       <button class="primary" id="readyBtn" aria-pressed="false">Estou pronto!</button>
       <span class="muted" id="readyHint"></span>

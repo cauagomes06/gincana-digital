@@ -1,6 +1,12 @@
 const $ = (id) => document.getElementById(id);
 const ROOM_COLORS = { azul: 'var(--azul)', verde: 'var(--verde)', roxa: 'var(--roxa)' };
 let ws, myKey, word = '', lastGood = true, clockTimer, myReady = false, replaced = false;
+let mode = 'digitacao', targetTimer;
+const MODE_NAMES = { digitacao: 'Corrida das Letras', caca: 'Caça às Letras' };
+const MODE_HELP = {
+  digitacao: 'Digite a palavra que aparece. Cada palavra certa vale 1 ponto. Esc pula a palavra (−1 ponto).',
+  caca: 'Clique nas letras antes que elas sumam. Cada letra vale 1 ponto, e elas ficam menores e mais rápidas.',
+};
 const lanes = new Map(); // player key -> <li>
 // secret id survives reloads in this tab, so a dropped student rejoins the same match with their score
 const session = (() => { try { return JSON.parse(sessionStorage.getItem('corrida')) || {}; } catch { return {}; } })();
@@ -102,6 +108,7 @@ const SFX = {
   correct: () => sfx([72, 79, 84], 0.06, 0.16, 'triangle', 0.8),
   tick: () => sfx([90], 0, 0.05, 'square', 0.3),
   join: () => sfx([60, 67, 72], 0.07, 0.14, 'triangle', 0.8),
+  thud: () => sfx([48], 0, 0.08, 'triangle', 0.7),
   end: () => sfx([72, 72, 72, 76, 79, 76, 79, 84], 0.13, 0.22),
 };
 $('musicBtn').onclick = () => { prefs.music = !prefs.music; applySound(); };
@@ -138,11 +145,17 @@ function joinRoom(room) {
   initAudio();
   send({ type: 'join', name, room, id: session.id });
 }
+function clearArena() {
+  clearTimeout(targetTimer);
+  $('arena').replaceChildren();
+  $('arena').classList.add('hidden');
+}
 function showLobby() {
   session.room = null;
   saveSession();
   stopMusic();
   stopClock();
+  clearArena();
   word = '';
   $('clock').textContent = '';
   lanes.clear();
@@ -158,6 +171,9 @@ $('leaveBtn').onclick = () => {
 };
 const skip = () => { if (word) send({ type: 'skip' }); };
 $('skipBtn').onclick = () => { skip(); $('guess').focus(); };
+for (const b of document.querySelectorAll('.mode')) b.onclick = () => send({ type: 'mode', mode: b.dataset.mode });
+// a click on the empty paper is a miss: no penalty, just a sound so students notice
+$('arena').onclick = (e) => { if (e.target === $('arena')) SFX.thud(); };
 $('readyBtn').onclick = () => {
   setReady(!myReady);
   send({ type: 'ready', ready: myReady });
@@ -200,10 +216,11 @@ function handle(msg) {
       b.style.setProperty('--c', ROOM_COLORS[r.id]);
       b.disabled = r.count >= msg.max || r.running;
       const name = document.createElement('strong'); name.textContent = r.name;
-      const count = document.createElement('small'); count.textContent = `${r.count} de ${msg.max} alunos`;
+      const prova = document.createElement('small'); prova.textContent = `Prova: ${MODE_NAMES[r.mode]}`;
+    const count = document.createElement('small'); count.textContent = `${r.count} de ${msg.max} alunos`;
       const status = document.createElement('small');
       status.textContent = r.running ? '🔒 Partida em andamento' : r.count >= msg.max ? 'Sala cheia' : 'Esperando alunos';
-      b.append(name, count, status);
+      b.append(name, prova, count, status);
       b.onclick = () => joinRoom(r.id);
       return b;
     }));
@@ -213,6 +230,7 @@ function handle(msg) {
     myKey = msg.key;
     // after a server restart keys start over: drop old lanes and the old match clock
     stopClock();
+    clearArena();
     lanes.clear();
     $('scores').replaceChildren();
     document.body.dataset.room = msg.room;
@@ -250,6 +268,13 @@ function handle(msg) {
       li.querySelector('.score').textContent = p.score;
     });
     for (const [key, li] of lanes) if (!seen.has(key)) { li.remove(); lanes.delete(key); }
+  mode = msg.mode;
+  document.body.dataset.mode = mode;
+  for (const b of document.querySelectorAll('.mode')) b.setAttribute('aria-pressed', b.dataset.mode === mode);
+  $('modeHelp').textContent = MODE_HELP[mode];
+  $('modes').classList.toggle('hidden', msg.running);
+  const me = msg.players.find((p) => p.key === myKey);
+  if (me && !msg.running) setReady(me.ready); // the server clears "pronto" when the prova changes
     $('readyBtn').parentElement.classList.toggle('hidden', msg.running);
     const readyCount = msg.players.filter((p) => p.ready).length;
     $('readyHint').textContent = `${readyCount} de ${msg.players.length} prontos. A partida começa quando todos estiverem prontos.`;
@@ -260,7 +285,33 @@ function handle(msg) {
     $('guess').value = '';
     $('guess').disabled = true;
     $('skipBtn').classList.add('hidden');
+    clearArena();
     runClock(msg.countdown, msg.duration);
+  } else if (msg.type === 'target') {
+    if ($('arena').classList.contains('hidden')) {
+      $('arena').classList.remove('hidden');
+      $('word').textContent = '';
+      $('info').textContent = 'Valendo! Clique nas letras.';
+      SFX.word();
+    }
+    clearTimeout(targetTimer);
+    const b = document.createElement('button');
+    b.className = 'target';
+    b.textContent = msg.letter;
+    b.setAttribute('aria-label', `Letra ${msg.letter}`);
+    b.style.cssText = `left: ${msg.x * 100}%; top: ${msg.y * 100}%; --size: ${msg.size}px; --life: ${msg.life}ms`;
+    b.onclick = () => {
+      clearTimeout(targetTimer);
+      b.disabled = true; // until the server sends the next letter
+      send({ type: 'hit', index: msg.index });
+      SFX.correct();
+    };
+    $('arena').replaceChildren(b);
+    targetTimer = setTimeout(() => {
+      b.remove();
+      send({ type: 'miss', index: msg.index });
+      SFX.thud();
+    }, msg.life);
   } else if (msg.type === 'word') {
     const first = !word;
     word = msg.word;
@@ -275,6 +326,7 @@ function handle(msg) {
     msg.skipped ? SFX.wrong() : first ? SFX.word() : SFX.correct();
   } else if (msg.type === 'end') {
     stopClock();
+    clearArena();
     $('clock').textContent = 'Tempo esgotado!';
     word = '';
     const placeOf = (p) => 1 + msg.ranking.filter((o) => o.score > p.score).length; // ties share a place
