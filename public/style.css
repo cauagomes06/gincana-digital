@@ -71,6 +71,9 @@ button { font: inherit; font-weight: 700; color: inherit; cursor: pointer; }
 .room strong { display: block; font: 1.7rem/1.1 'Lilita One', system-ui, sans-serif; }
 .room small { display: block; font-size: 1rem; line-height: 1.4; opacity: .95; }
 #lobbyMsg { color: var(--bad); font-weight: 700; min-height: var(--rule); margin: 8px 0 0; }
+.field-error { color: var(--bad); font-weight: 700; margin: 6px auto 0; }
+.field-error:empty { display: none; }
+#name.invalid { border-color: var(--bad); background: #FFF1F2; animation: shake .25s; }
 
 /* game */
 .topbar { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 12px; margin-bottom: var(--rule); }

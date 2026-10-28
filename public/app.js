@@ -159,7 +159,16 @@ const send = (msg) => ws.readyState === 1 && ws.send(JSON.stringify(msg));
 
 function joinRoom(room) {
   const name = $('name').value.trim() || (room === 'solo' ? 'Você' : ''); // playing alone, a name is optional
-  if (!name) { $('lobbyMsg').textContent = 'Digite seu nome antes de escolher a sala.'; return $('name').focus(); }
+  if (!name) {
+    // shown right under the field: focusing the field scrolls up, so a message near the rooms would be off screen
+    $('nameMsg').textContent = 'Digite seu nome antes de entrar numa sala.';
+    $('name').classList.remove('invalid');
+    void $('name').offsetWidth; // restart the shake on every try
+    $('name').classList.add('invalid');
+    SFX.missClick();
+    $('name').scrollIntoView({ block: 'center', behavior: 'smooth' }); // the rooms are far below the field
+    return $('name').focus({ preventScroll: true });
+  }
   Object.assign(session, { name, room });
   saveSession();
   initAudio();
@@ -491,6 +500,7 @@ for (const p of PROVAS) {
 }
 markProva();
 $('soloBtn').onclick = () => joinRoom('solo');
+$('name').oninput = () => { $('nameMsg').textContent = ''; $('name').classList.remove('invalid'); };
 $('readyBtn').onclick = () => {
   setReady(!myReady);
   send({ type: 'ready', ready: myReady });

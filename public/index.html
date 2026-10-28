@@ -30,7 +30,8 @@
     <p class="muted">Provas de teclado e mouse. Treine sozinho ou dispute com a turma numa sala. Cada partida dura <span id="duration">2 minutos</span>, e vence quem fizer mais pontos.</p>
 
     <label for="name">Seu nome</label>
-    <input id="name" maxlength="20" autocomplete="off" placeholder="Ex.: Maria do 8º B" autofocus>
+    <input id="name" maxlength="20" autocomplete="off" placeholder="Ex.: Maria do 8º B" autofocus aria-describedby="nameMsg">
+    <p id="nameMsg" class="field-error" role="alert"></p>
 
     <h2>Escolha a prova</h2>
     <div class="provas" id="provas" role="group" aria-label="Prova"></div>
