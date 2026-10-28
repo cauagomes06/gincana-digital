@@ -28,17 +28,19 @@
       linear-gradient(to right, transparent calc(var(--margin-x) - 2px), var(--margin) calc(var(--margin-x) - 2px), var(--margin) var(--margin-x), transparent var(--margin-x)),
       repeating-linear-gradient(to bottom, transparent 0 calc(var(--rule) - 1px), var(--line) calc(var(--rule) - 1px) var(--rule));
   }
-  main { max-width: 760px; padding: var(--rule) 24px calc(var(--rule) * 2) calc(var(--margin-x) + 24px); }
+  main { max-width: 760px; margin: 0 auto; padding: var(--rule) 24px calc(var(--rule) * 2); text-align: center; }
+  @media (max-width: 920px) { main { padding-left: calc(var(--margin-x) + 16px); } }
   h1, h2, .word { font-family: 'Lilita One', system-ui, sans-serif; font-weight: 400; }
   h1 { font-size: clamp(2.6rem, 8vw, 4.2rem); line-height: 1; margin: 0 0 8px; }
   h1 span { display: inline-block; transform: rotate(-2deg); background: linear-gradient(transparent 55%, var(--marker) 55% 90%, transparent 90%); }
   h2 { font-size: 1.6rem; line-height: var(--rule); margin: var(--rule) 0 0; }
-  p { margin: 0 0 var(--rule); max-width: 60ch; }
+  p { margin: 0 auto var(--rule); max-width: 60ch; }
   .muted { color: var(--muted); }
   .hidden { display: none !important; }
 
   label { display: block; font-weight: 700; }
   input {
+    display: block; margin: 0 auto; text-align: center;
     font: inherit; font-size: 1.4rem; color: var(--ink); width: 100%; max-width: 420px;
     padding: 10px 14px; border: 3px solid var(--ink); border-radius: 10px; background: #fff;
   }
@@ -56,7 +58,7 @@
   .ghost[aria-pressed="false"] { opacity: .5; text-decoration: line-through; }
 
   /* lobby: rooms look like notebook covers */
-  .rooms { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin-top: 12px; }
+  .rooms { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin-top: 12px; text-align: left; }
   .room {
     text-align: left; color: #fff; border: 0; border-radius: 6px 14px 14px 6px; padding: 18px 18px 18px 30px;
     background: var(--c); position: relative; box-shadow: 0 5px 0 var(--ink); transition: transform .1s;
@@ -72,9 +74,8 @@
   #lobbyMsg { color: var(--bad); font-weight: 700; min-height: var(--rule); margin: 8px 0 0; }
 
   /* game */
-  .topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: var(--rule); }
+  .topbar { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 12px; margin-bottom: var(--rule); }
   .tag { background: var(--room); color: #fff; border-radius: 999px; padding: 2px 14px; font-weight: 700; }
-  .topbar .spacer { flex: 1; }
   .word {
     font-size: clamp(2.6rem, 11vw, 5.5rem); line-height: 1.1; margin: 8px 0; min-height: 1.1em;
     overflow-wrap: anywhere; letter-spacing: .02em;
@@ -84,10 +85,13 @@
   #info { font-weight: 700; min-height: var(--rule); margin: 0 0 8px; }
   #guess.shake { animation: shake .25s; border-color: var(--bad); }
   @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
-  .controls { display: flex; gap: 12px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+  .controls { display: flex; flex-direction: column; gap: 4px; align-items: center; margin-top: 16px; }
+  .feed { list-style: none; padding: 0; margin: 12px auto 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; min-height: var(--rule); }
+  .feed li { background: #fff; border: 2px solid var(--room); border-radius: 999px; padding: 0 12px; font-size: .9rem; line-height: 1.6; }
+  .feed li.me { background: var(--room); color: #fff; font-weight: 700; }
 
   /* race track scoreboard */
-  .track { list-style: none; padding: 0; margin: 12px 0 0; }
+  .track { list-style: none; padding: 0; margin: 12px auto 0; max-width: 620px; text-align: left; }
   .lane { display: grid; grid-template-columns: minmax(80px, 160px) 1fr 2.5ch; gap: 10px; align-items: center; line-height: var(--rule); }
   .lane .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .lane.me .name { font-weight: 700; color: var(--room); }
@@ -117,7 +121,7 @@
 <main>
   <section id="lobby">
     <h1><span>Corrida das Letras</span></h1>
-    <p class="muted">Uma palavra aparece na tela. Quem digitar certo primeiro ganha o ponto. Depois de 10 palavras, vence quem tiver mais pontos.</p>
+    <p class="muted">Uma palavra aparece na tela e todo mundo pode acertar. Quem digita primeiro ganha 10 pontos, o segundo 7, o terceiro 5 e os demais 3. Depois de 10 palavras, vence quem tiver mais pontos.</p>
 
     <label for="name">Seu nome</label>
     <input id="name" maxlength="20" autocomplete="off" placeholder="Ex.: Maria do 8º B" autofocus>
@@ -131,7 +135,6 @@
     <div class="topbar">
       <span class="tag" id="roomName"></span>
       <span id="round" class="muted"></span>
-      <span class="spacer"></span>
       <button class="ghost" id="musicBtn" aria-pressed="true">♪ Música</button>
       <button class="ghost" id="sfxBtn" aria-pressed="true">🔊 Efeitos</button>
       <button class="ghost" id="leaveBtn">Trocar de sala</button>
@@ -140,6 +143,7 @@
     <div class="word" id="word" aria-live="polite"></div>
     <p id="info" aria-live="polite"></p>
     <input id="guess" placeholder="Digite a palavra aqui" aria-label="Digite a palavra" autocomplete="off" autocapitalize="off" spellcheck="false" disabled>
+    <ol class="feed" id="feed" aria-label="Quem já acertou"></ol>
     <div class="controls">
       <button class="primary" id="startBtn">Começar partida</button>
       <span class="muted" id="startHint">Qualquer aluno da sala pode começar.</span>
@@ -152,7 +156,8 @@
 <script>
   const $ = (id) => document.getElementById(id);
   const ROOM_COLORS = { azul: 'var(--azul)', verde: 'var(--verde)', roxa: 'var(--roxa)' };
-  let ws, myName = '', word = '', lastGood = true;
+  let ws, myName = '', word = '', lastGood = true, countdown;
+  const stopCountdown = () => { clearInterval(countdown); countdown = null; };
 
   // ---------- audio: chiptune loop + effects, all synthesized (no audio files) ----------
   const prefs = { music: true, sfx: true };
@@ -210,6 +215,8 @@
     wrong: () => sfx([45, 41], 0.07, 0.12, 'sawtooth', 0.5),
     word: () => sfx([72, 79], 0.08, 0.12),
     myWin: () => sfx([72, 76, 79, 84, 88], 0.06, 0.2),
+    correct: () => sfx([72, 79, 84], 0.06, 0.16, 'triangle', 0.8),
+    tick: () => sfx([90], 0, 0.05, 'square', 0.3),
     otherWin: () => sfx([67, 60], 0.12, 0.2, 'triangle', 0.8),
     join: () => sfx([60, 67, 72], 0.07, 0.14, 'triangle', 0.8),
     end: () => sfx([72, 72, 72, 76, 79, 76, 79, 84], 0.13, 0.22),
@@ -238,6 +245,7 @@
   $('leaveBtn').onclick = () => {
     send({ type: 'leave' });
     stopMusic();
+    stopCountdown();
     document.body.removeAttribute('data-room');
     $('game').classList.add('hidden');
     $('lobby').classList.remove('hidden');
@@ -247,7 +255,7 @@
 
   // ---------- typing ----------
   function renderWord(typed = '') {
-    const t = typed.toLowerCase();
+    const t = typed.toLowerCase().normalize('NFC');
     let ok = 0;
     while (ok < t.length && t[ok] === word[ok]) ok++;
     const done = document.createElement('span'); done.className = 'done'; done.textContent = word.slice(0, ok);
@@ -261,7 +269,7 @@
     if (good && value) SFX.key();
     if (!good && lastGood) { SFX.wrong(); $('guess').classList.remove('shake'); void $('guess').offsetWidth; $('guess').classList.add('shake'); }
     lastGood = good;
-    if (value.trim().toLowerCase() === word) send({ type: 'guess', word: value });
+    if (value.trim().toLowerCase().normalize('NFC') === word) send({ type: 'guess', word: value });
   };
   // must not return false: an on* handler returning false cancels the keystroke
   $('guess').onkeydown = (e) => { if (e.key === 'Enter') send({ type: 'guess', word: $('guess').value }); };
@@ -296,11 +304,11 @@
     } else if (msg.type === 'state') {
       $('scores').replaceChildren(...msg.players.map((p) => {
         const li = document.createElement('li');
-        li.className = 'lane' + (p.name === myName ? ' me' : '');
+        li.className = 'lane' + (p.name === myName ? ' me' : ''); // shortcut: matches by name, so duplicate names both highlight
         const name = document.createElement('span'); name.className = 'name'; name.textContent = p.name;
         const road = document.createElement('span'); road.className = 'road';
         const car = document.createElement('span'); car.className = 'car'; car.textContent = p.name[0].toUpperCase();
-        car.style.setProperty('--f', p.score / msg.rounds);
+        car.style.setProperty('--f', p.score / msg.maxScore);
         road.append(car);
         const score = document.createElement('span'); score.className = 'score'; score.textContent = p.score;
         li.append(name, road, score);
@@ -316,15 +324,36 @@
       $('guess').value = '';
       $('guess').disabled = false;
       $('guess').focus();
+      $('feed').replaceChildren();
+      stopCountdown();
       SFX.word();
-    } else if (msg.type === 'winner') {
-      const me = msg.name === myName;
-      $('info').textContent = me ? 'Você acertou primeiro! +1 ponto' : `${msg.name} acertou primeiro.`;
+    } else if (msg.type === 'scored') {
+      const li = document.createElement('li');
+      li.className = msg.you ? 'me' : '';
+      li.textContent = `${msg.place}º ${msg.name} +${msg.points}`;
+      $('feed').append(li);
+      if (msg.you) {
+        stopCountdown();
+        $('info').textContent = `Você acertou em ${msg.place}º lugar! +${msg.points} pontos`;
+        $('guess').disabled = true;
+        $('guess').value = '';
+        $('guess').classList.remove('shake');
+        word = '';
+        msg.place === 1 ? SFX.myWin() : SFX.correct();
+      } else if (msg.place === 1 && word) {
+        SFX.otherWin();
+        let left = Math.round(msg.closeIn / 1000);
+        const show = () => { $('info').textContent = `${msg.name} acertou primeiro! Você ainda tem ${left} s.`; };
+        show();
+        countdown = setInterval(() => { left--; if (left > 0) { show(); SFX.tick(); } else stopCountdown(); }, 1000);
+      }
+    } else if (msg.type === 'roundEnd') {
+      stopCountdown();
+      if (word) $('info').textContent = `Tempo esgotado! A palavra era "${msg.word}".`;
       $('guess').disabled = true;
       $('guess').value = '';
       $('guess').classList.remove('shake');
       word = '';
-      me ? SFX.myWin() : SFX.otherWin();
     } else if (msg.type === 'end') {
       const top = msg.ranking[0];
       const banner = document.createElement('span'); banner.className = 'banner';
