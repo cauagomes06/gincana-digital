@@ -123,7 +123,7 @@
 <main>
   <section id="lobby">
     <h1><span>Corrida das Letras</span></h1>
-    <p class="muted">Todos recebem as mesmas palavras e cada um digita no seu ritmo. Cada palavra certa vale 1 ponto. Quando o tempo de 60 segundos acabar, vence quem fez mais pontos.</p>
+    <p class="muted">Todos recebem as mesmas palavras e cada um digita no seu ritmo. Cada palavra certa vale 1 ponto. Quando o tempo de <span id="duration">2 minutos</span> acabar, vence quem fez mais pontos.</p>
 
     <label for="name">Seu nome</label>
     <input id="name" maxlength="20" autocomplete="off" placeholder="Ex.: Maria do 8º B" autofocus>
@@ -168,6 +168,7 @@
     clearInterval(clockTimer);
     $('clock').classList.remove('hurry');
   }
+  const clockText = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   // "3, 2, 1" in the word area, then the match clock counting down
   function runClock(countdownMs, durationMs) {
     const startAt = Date.now() + countdownMs, endAt = startAt + durationMs;
@@ -178,11 +179,11 @@
       if (now < startAt) {
         const n = Math.ceil((startAt - now) / 1000);
         if (n !== lastBeep) { lastBeep = n; $('word').textContent = n; SFX.tick(); }
-        $('clock').textContent = `⏱ ${durationMs / 1000} s`;
+        $('clock').textContent = `⏱ ${clockText(durationMs / 1000)}`;
         return;
       }
       const left = Math.max(0, Math.ceil((endAt - now) / 1000));
-      $('clock').textContent = `⏱ ${left} s`;
+      $('clock').textContent = `⏱ ${clockText(left)}`;
       $('clock').classList.toggle('hurry', left <= 10);
       if (left <= 5 && left > 0 && left !== lastBeep) { lastBeep = left; SFX.tick(); }
       if (!left) stopClock();
@@ -313,6 +314,8 @@
   // ---------- messages ----------
   function handle(msg) {
     if (msg.type === 'rooms') {
+      const s = msg.duration / 1000;
+      $('duration').textContent = s % 60 ? `${s} segundos` : s === 60 ? '1 minuto' : `${s / 60} minutos`;
       $('rooms').replaceChildren(...msg.rooms.map((r) => {
         const b = document.createElement('button');
         b.className = 'room';

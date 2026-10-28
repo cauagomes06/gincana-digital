@@ -5,7 +5,7 @@ const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 3000;
 const MAX_PLAYERS = 30;
-const DURATION_MS = Number(process.env.DURATION_MS) || 60000; // match length
+const DURATION_MS = Number(process.env.DURATION_MS) || 120000; // match length
 const COUNTDOWN_MS = Number(process.env.COUNTDOWN_MS ?? 3000); // "3, 2, 1" before the first word
 const WORDS = [
   // sem acento
@@ -55,7 +55,8 @@ const send = (ws, msg) => ws.readyState === 1 && ws.send(JSON.stringify(msg));
 const broadcast = (room, msg) => { for (const ws of room.players.keys()) send(ws, msg); };
 const ranking = (room) => [...room.players.values()].sort((a, b) => b.score - a.score);
 const roomList = () => Object.entries(rooms).map(([id, r]) => ({ id, name: r.name, count: r.players.size, running: r.running }));
-const sendRooms = () => { for (const ws of wss.clients) send(ws, { type: 'rooms', rooms: roomList(), max: MAX_PLAYERS }); };
+const roomsMsg = () => ({ type: 'rooms', rooms: roomList(), max: MAX_PLAYERS, duration: DURATION_MS });
+const sendRooms = () => { for (const ws of wss.clients) send(ws, roomsMsg()); };
 const sendState = (room) => {
   broadcast(room, { type: 'state', players: ranking(room), running: room.running });
   sendRooms();
@@ -102,7 +103,7 @@ function leave(ws) {
 }
 
 wss.on('connection', (ws) => {
-  send(ws, { type: 'rooms', rooms: roomList(), max: MAX_PLAYERS });
+  send(ws, roomsMsg());
 
   ws.on('message', (raw) => {
     let msg;
