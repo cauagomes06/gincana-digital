@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Corrida das Letras</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Lilita+One&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <section id="lobby">
+    <h1><span>Corrida das Letras</span></h1>
+    <p class="muted">Todos recebem as mesmas palavras e cada um digita no seu ritmo. Cada palavra certa vale 1 ponto. Quando o tempo de <span id="duration">2 minutos</span> acabar, vence quem fez mais pontos.</p>
+
+    <label for="name">Seu nome</label>
+    <input id="name" maxlength="20" autocomplete="off" placeholder="Ex.: Maria do 8º B" autofocus>
+
+    <h2>Escolha sua sala</h2>
+    <div class="rooms" id="rooms"></div>
+    <p id="lobbyMsg" role="alert"></p>
+  </section>
+
+  <section id="game" class="hidden">
+    <div class="topbar">
+      <span class="tag" id="roomName"></span>
+      <span id="round" class="muted"></span>
+      <button class="ghost" id="musicBtn" aria-pressed="true">♪ Música</button>
+      <button class="ghost" id="sfxBtn" aria-pressed="true">🔊 Efeitos</button>
+      <button class="ghost" id="leaveBtn">Trocar de sala</button>
+    </div>
+
+    <div class="clock" id="clock" role="timer"></div>
+    <div class="word" id="word" aria-live="polite"></div>
+    <p id="info" aria-live="polite"></p>
+    <input id="guess" maxlength="30" placeholder="Digite a palavra aqui" aria-label="Digite a palavra" autocomplete="off" autocapitalize="off" spellcheck="false" disabled>
+    <button class="ghost hidden" id="skipBtn">Pular palavra (−1 ponto) · Esc</button>
+    <div class="controls">
+      <button class="primary" id="readyBtn" aria-pressed="false">Estou pronto!</button>
+      <span class="muted" id="readyHint"></span>
+    </div>
+
+    <h2>Placar</h2>
+    <ol class="track" id="scores"></ol>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,13 +1,25 @@
-// Self-check: ready-up, own pace, skip penalty, reconnect keeps score, duplicate names, room isolation.
+// Ready-up, own pace, skip penalty, reconnect keeps score, duplicate names, room isolation, crash safety.
 process.env.PORT = 3999; process.env.DURATION_MS = 800; process.env.COUNTDOWN_MS = 20;
+const { test } = require('node:test');
 const assert = require('assert');
 const WebSocket = require('ws');
-const server = require('./server');
-const { WORDS } = server;
-assert.ok(WORDS.length >= 200, 'word list too short');
-assert.strictEqual(new Set(WORDS).size, WORDS.length, 'duplicate words');
-assert.ok(WORDS.every((w) => w === w.toLowerCase()), 'words must be lowercase');
-assert.ok(WORDS.some((w) => /[áàâãéêíóôõúç]/.test(w)), 'need accented words');
+const server = require('../server');
+const WORDS = require('../words');
+
+test('lista de palavras', () => {
+  assert.ok(WORDS.length >= 200, 'word list too short');
+  assert.strictEqual(new Set(WORDS).size, WORDS.length, 'duplicate words');
+  assert.ok(WORDS.every((w) => w === w.toLowerCase()), 'words must be lowercase');
+  assert.ok(WORDS.some((w) => /[áàâãéêíóôõúç]/.test(w)), 'need accented words');
+});
+
+test('serve as páginas e recusa caminhos desconhecidos', async () => {
+  const get = (p) => fetch(`http://localhost:3999${p}`);
+  assert.match((await get('/')).headers.get('content-type'), /text\/html/);
+  assert.match((await get('/app.js')).headers.get('content-type'), /javascript/);
+  assert.match((await get('/style.css')).headers.get('content-type'), /css/);
+  assert.strictEqual((await get('/../server.js')).status, 404);
+});
 
 const connect = (name, room, id = name) => new Promise((resolve) => {
   const ws = new WebSocket('ws://localhost:3999');
@@ -26,7 +38,7 @@ const waitFor = (ws, type) => new Promise((resolve) => {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const sendTo = (ws, msg) => ws.send(JSON.stringify(msg));
 
-(async () => {
+test('partida completa com várias salas', async () => {
   // bad messages must not crash the server (a crash would kill this test process too)
   const rogue = await connect('Rogue', 'roxa');
   rogue.on('error', () => {});
@@ -100,7 +112,6 @@ const sendTo = (ws, msg) => ws.send(JSON.stringify(msg));
   assert.ok(!caio.msgs.some((m) => m.type === 'word'), 'room verde must not receive azul words');
   const { rooms } = caio.msgs.filter((m) => m.type === 'rooms').pop();
   assert.deepStrictEqual(rooms.map((r) => [r.count, r.running]), [[2, false], [1, false], [0, false]]);
-  console.log('OK');
   for (const ws of [ana, bia, caio, late, twin, tabA, tabB]) ws.close();
-  server.close(); process.exit(0);
-})();
+  server.close();
+});
