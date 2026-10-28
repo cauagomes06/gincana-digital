@@ -4,89 +4,342 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Corrida das Letras</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Lilita+One&display=swap" rel="stylesheet">
 <style>
-  body { font-family: system-ui, sans-serif; background: #14161c; color: #eee; margin: 0; padding: 16px; }
-  main { max-width: 640px; margin: 0 auto; }
-  h1 { text-align: center; }
-  input, button { font-size: 1.2rem; padding: 10px; border-radius: 8px; border: none; }
-  input { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
-  button { background: #4f8cff; color: #fff; cursor: pointer; width: 100%; }
-  button:disabled { opacity: .5; cursor: default; }
-  #word { font-size: 2.5rem; text-align: center; letter-spacing: 2px; margin: 24px 0 8px; color: #ffd84f; min-height: 3rem; }
-  #info { text-align: center; min-height: 1.5rem; color: #aaa; }
-  ol { background: #1e2129; border-radius: 8px; padding: 12px 12px 12px 40px; }
-  li { padding: 4px 0; }
-  .hidden { display: none; }
+  :root {
+    --paper: #FAFBF6; --line: #C9DBEF; --margin: #E8505B; --ink: #1D2B53; --muted: #5B6785;
+    --marker: #FFE14D; --good: #179C5B; --bad: #E8505B;
+    --azul: #2D6CDF; --verde: #179C5B; --roxa: #7B4FD6;
+    --room: var(--ink); --margin-x: 64px; --rule: 32px;
+  }
+  body[data-room="azul"] { --room: var(--azul); }
+  body[data-room="verde"] { --room: var(--verde); }
+  body[data-room="roxa"] { --room: var(--roxa); }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--ink);
+    font: 20px/var(--rule) 'Atkinson Hyperlegible', system-ui, sans-serif;
+    background-color: var(--paper);
+    /* notebook paper: red margin line over blue ruled lines */
+    background-image:
+      linear-gradient(to right, transparent calc(var(--margin-x) - 2px), var(--margin) calc(var(--margin-x) - 2px), var(--margin) var(--margin-x), transparent var(--margin-x)),
+      repeating-linear-gradient(to bottom, transparent 0 calc(var(--rule) - 1px), var(--line) calc(var(--rule) - 1px) var(--rule));
+  }
+  main { max-width: 760px; padding: var(--rule) 24px calc(var(--rule) * 2) calc(var(--margin-x) + 24px); }
+  h1, h2, .word { font-family: 'Lilita One', system-ui, sans-serif; font-weight: 400; }
+  h1 { font-size: clamp(2.6rem, 8vw, 4.2rem); line-height: 1; margin: 0 0 8px; }
+  h1 span { display: inline-block; transform: rotate(-2deg); background: linear-gradient(transparent 55%, var(--marker) 55% 90%, transparent 90%); }
+  h2 { font-size: 1.6rem; line-height: var(--rule); margin: var(--rule) 0 0; }
+  p { margin: 0 0 var(--rule); max-width: 60ch; }
+  .muted { color: var(--muted); }
+  .hidden { display: none !important; }
+
+  label { display: block; font-weight: 700; }
+  input {
+    font: inherit; font-size: 1.4rem; color: var(--ink); width: 100%; max-width: 420px;
+    padding: 10px 14px; border: 3px solid var(--ink); border-radius: 10px; background: #fff;
+  }
+  input:disabled { background: #EEF1F6; border-color: #B8C1D6; }
+  button { font: inherit; font-weight: 700; color: inherit; cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--marker); outline-offset: 3px; box-shadow: 0 0 0 6px var(--ink); }
+
+  .primary {
+    background: var(--room); color: #fff; border: 0; border-radius: 10px; padding: 12px 22px;
+    box-shadow: 0 4px 0 var(--ink); transition: transform .08s;
+  }
+  .primary:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+  .primary:disabled { opacity: .45; cursor: default; }
+  .ghost { background: none; border: 2px solid var(--ink); border-radius: 999px; padding: 4px 14px; font-size: .9rem; line-height: 1.4; }
+  .ghost[aria-pressed="false"] { opacity: .5; text-decoration: line-through; }
+
+  /* lobby: rooms look like notebook covers */
+  .rooms { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin-top: 12px; }
+  .room {
+    text-align: left; color: #fff; border: 0; border-radius: 6px 14px 14px 6px; padding: 18px 18px 18px 30px;
+    background: var(--c); position: relative; box-shadow: 0 5px 0 var(--ink); transition: transform .1s;
+  }
+  .room::before { /* spiral binding */
+    content: ''; position: absolute; left: 8px; top: 12px; bottom: 12px; width: 8px;
+    background: radial-gradient(circle, var(--paper) 3px, transparent 4px) 0 0 / 8px 16px;
+  }
+  .room:hover:not(:disabled) { transform: translateY(-3px) rotate(-1deg); }
+  .room:disabled { filter: grayscale(.7); opacity: .6; cursor: not-allowed; }
+  .room strong { display: block; font: 1.7rem/1.1 'Lilita One', system-ui, sans-serif; }
+  .room small { display: block; font-size: 1rem; opacity: .95; }
+  #lobbyMsg { color: var(--bad); font-weight: 700; min-height: var(--rule); margin: 8px 0 0; }
+
+  /* game */
+  .topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: var(--rule); }
+  .tag { background: var(--room); color: #fff; border-radius: 999px; padding: 2px 14px; font-weight: 700; }
+  .topbar .spacer { flex: 1; }
+  .word {
+    font-size: clamp(2.6rem, 11vw, 5.5rem); line-height: 1.1; margin: 8px 0; min-height: 1.1em;
+    overflow-wrap: anywhere; letter-spacing: .02em;
+  }
+  .word .done { color: var(--room); background: linear-gradient(transparent 60%, var(--marker) 60% 92%, transparent 92%); }
+  .word .wrong { color: var(--bad); }
+  #info { font-weight: 700; min-height: var(--rule); margin: 0 0 8px; }
+  #guess.shake { animation: shake .25s; border-color: var(--bad); }
+  @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+  .controls { display: flex; gap: 12px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+
+  /* race track scoreboard */
+  .track { list-style: none; padding: 0; margin: 12px 0 0; }
+  .lane { display: grid; grid-template-columns: minmax(80px, 160px) 1fr 2.5ch; gap: 10px; align-items: center; line-height: var(--rule); }
+  .lane .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lane.me .name { font-weight: 700; color: var(--room); }
+  .road { position: relative; height: 20px; border-bottom: 2px dashed var(--muted); margin-right: 22px; }
+  .road::after { content: '🏁'; position: absolute; right: -24px; top: -4px; font-size: 18px; line-height: 1; }
+  .car {
+    position: absolute; top: 0; left: calc((100% - 24px) * var(--f));
+    width: 24px; height: 24px; border-radius: 50%; background: var(--room); color: #fff;
+    font: 13px/24px 'Lilita One', system-ui, sans-serif; text-align: center; transition: left .5s cubic-bezier(.3, 1.6, .5, 1);
+  }
+  .lane:not(.me) .car { background: var(--muted); }
+  .lane .score { font-weight: 700; text-align: right; }
+
+  .banner { background: var(--marker); border-radius: 6px; padding: 8px 14px; transform: rotate(-1deg); display: inline-block; }
+
+  @media (max-width: 560px) {
+    :root { --margin-x: 28px; }
+    main { padding-left: calc(var(--margin-x) + 14px); padding-right: 16px; }
+    .lane { grid-template-columns: 80px 1fr 2.5ch; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
 <main>
-  <h1>⌨️ Corrida das Letras</h1>
+  <section id="lobby">
+    <h1><span>Corrida das Letras</span></h1>
+    <p class="muted">Uma palavra aparece na tela. Quem digitar certo primeiro ganha o ponto. Depois de 10 palavras, vence quem tiver mais pontos.</p>
 
-  <section id="join">
-    <input id="name" maxlength="20" placeholder="Seu nome" aria-label="Seu nome" autofocus>
-    <button id="joinBtn">Entrar</button>
+    <label for="name">Seu nome</label>
+    <input id="name" maxlength="20" autocomplete="off" placeholder="Ex.: Maria do 8º B" autofocus>
+
+    <h2>Escolha sua sala</h2>
+    <div class="rooms" id="rooms"></div>
+    <p id="lobbyMsg" role="alert"></p>
   </section>
 
   <section id="game" class="hidden">
-    <div id="round" style="text-align:center"></div>
-    <div id="word" aria-live="polite"></div>
-    <div id="info" aria-live="polite"></div>
-    <input id="guess" placeholder="Digite a palavra e aperte Enter" aria-label="Digite a palavra" autocomplete="off" disabled>
-    <button id="startBtn">Iniciar partida</button>
+    <div class="topbar">
+      <span class="tag" id="roomName"></span>
+      <span id="round" class="muted"></span>
+      <span class="spacer"></span>
+      <button class="ghost" id="musicBtn" aria-pressed="true">♪ Música</button>
+      <button class="ghost" id="sfxBtn" aria-pressed="true">🔊 Efeitos</button>
+      <button class="ghost" id="leaveBtn">Trocar de sala</button>
+    </div>
+
+    <div class="word" id="word" aria-live="polite"></div>
+    <p id="info" aria-live="polite"></p>
+    <input id="guess" placeholder="Digite a palavra aqui" aria-label="Digite a palavra" autocomplete="off" autocapitalize="off" spellcheck="false" disabled>
+    <div class="controls">
+      <button class="primary" id="startBtn">Começar partida</button>
+      <span class="muted" id="startHint">Qualquer aluno da sala pode começar.</span>
+    </div>
+
     <h2>Placar</h2>
-    <ol id="scores"></ol>
+    <ol class="track" id="scores"></ol>
   </section>
 </main>
 <script>
   const $ = (id) => document.getElementById(id);
-  const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
-  const send = (msg) => ws.send(JSON.stringify(msg));
+  const ROOM_COLORS = { azul: 'var(--azul)', verde: 'var(--verde)', roxa: 'var(--roxa)' };
+  let ws, myName = '', word = '', lastGood = true;
 
-  function join() {
-    send({ type: 'join', name: $('name').value });
-    $('join').classList.add('hidden');
-    $('game').classList.remove('hidden');
+  // ---------- audio: chiptune loop + effects, all synthesized (no audio files) ----------
+  const prefs = { music: true, sfx: true };
+  try { Object.assign(prefs, JSON.parse(localStorage.getItem('corrida-sound')) || {}); } catch {}
+  let ctx, musicBus, sfxBus, musicTimer, step = 0, nextAt = 0;
+  const hz = (n) => 440 * 2 ** ((n - 69) / 12);
+
+  function initAudio() {
+    if (ctx) return ctx.resume();
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    musicBus = ctx.createGain(); musicBus.connect(ctx.destination);
+    sfxBus = ctx.createGain(); sfxBus.connect(ctx.destination);
+    applySound();
   }
-  $('joinBtn').onclick = join;
-  $('name').onkeydown = (e) => e.key === 'Enter' && join();
-  $('startBtn').onclick = () => send({ type: 'start' });
-  $('guess').onkeydown = (e) => {
-    if (e.key !== 'Enter') return;
-    send({ type: 'guess', word: $('guess').value });
-    $('guess').value = '';
+  function tone(note, at, dur, type, bus, vol) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.value = hz(note);
+    g.gain.setValueAtTime(vol, at);
+    g.gain.exponentialRampToValueAtTime(0.001, at + dur);
+    o.connect(g).connect(bus);
+    o.start(at); o.stop(at + dur + 0.05);
+  }
+  // C – Am – F – G, arpeggiated lead over a walking bass
+  const CHORDS = [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]];
+  const ARP = [0, 1, 2, 1, 0, 2, 1, 2];
+  const STEP = 0.19;
+  function scheduleMusic() {
+    while (nextAt < ctx.currentTime + 0.12) {
+      const chord = CHORDS[Math.floor(step / 8) % 4], i = step % 8;
+      tone(chord[ARP[i]] + 12, nextAt, 0.16, 'square', musicBus, 0.25);
+      if (i % 2 === 0) tone(chord[0] - 12 + (i === 4 ? 7 : 0), nextAt, 0.32, 'triangle', musicBus, 0.7);
+      step = (step + 1) % 32;
+      nextAt += STEP;
+    }
+  }
+  function startMusic() {
+    if (!ctx || musicTimer) return;
+    nextAt = ctx.currentTime + 0.05;
+    musicTimer = setInterval(scheduleMusic, 30);
+  }
+  function stopMusic() { clearInterval(musicTimer); musicTimer = null; }
+  function applySound() {
+    if (ctx) { musicBus.gain.value = prefs.music ? 0.08 : 0; sfxBus.gain.value = prefs.sfx ? 0.25 : 0; }
+    $('musicBtn').setAttribute('aria-pressed', prefs.music);
+    $('sfxBtn').setAttribute('aria-pressed', prefs.sfx);
+    try { localStorage.setItem('corrida-sound', JSON.stringify(prefs)); } catch {}
+  }
+  function sfx(notes, gap, dur, type = 'square', vol = 0.6) {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    notes.forEach((n, i) => tone(n, t + i * gap, dur, type, sfxBus, vol));
+  }
+  const SFX = {
+    key: () => sfx([84], 0, 0.04, 'square', 0.25),
+    wrong: () => sfx([45, 41], 0.07, 0.12, 'sawtooth', 0.5),
+    word: () => sfx([72, 79], 0.08, 0.12),
+    myWin: () => sfx([72, 76, 79, 84, 88], 0.06, 0.2),
+    otherWin: () => sfx([67, 60], 0.12, 0.2, 'triangle', 0.8),
+    join: () => sfx([60, 67, 72], 0.07, 0.14, 'triangle', 0.8),
+    end: () => sfx([72, 72, 72, 76, 79, 76, 79, 84], 0.13, 0.22),
   };
+  $('musicBtn').onclick = () => { prefs.music = !prefs.music; applySound(); };
+  $('sfxBtn').onclick = () => { prefs.sfx = !prefs.sfx; applySound(); };
+
+  // ---------- connection ----------
+  function connect() {
+    ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+    ws.onmessage = (e) => handle(JSON.parse(e.data));
+    ws.onclose = () => {
+      $('lobbyMsg').textContent = 'Sem conexão com o servidor. Recarregue a página (F5).';
+      $('info').textContent = 'Sem conexão com o servidor. Recarregue a página (F5).';
+      $('guess').disabled = true;
+    };
+  }
+  const send = (msg) => ws.readyState === 1 && ws.send(JSON.stringify(msg));
+
+  function joinRoom(id) {
+    myName = $('name').value.trim();
+    if (!myName) { $('lobbyMsg').textContent = 'Digite seu nome antes de escolher a sala.'; return $('name').focus(); }
+    initAudio();
+    send({ type: 'join', name: myName, room: id });
+  }
+  $('leaveBtn').onclick = () => {
+    send({ type: 'leave' });
+    stopMusic();
+    document.body.removeAttribute('data-room');
+    $('game').classList.add('hidden');
+    $('lobby').classList.remove('hidden');
+    $('lobbyMsg').textContent = '';
+  };
+  $('startBtn').onclick = () => send({ type: 'start' });
+
+  // ---------- typing ----------
+  function renderWord(typed = '') {
+    const t = typed.toLowerCase();
+    let ok = 0;
+    while (ok < t.length && t[ok] === word[ok]) ok++;
+    const done = document.createElement('span'); done.className = 'done'; done.textContent = word.slice(0, ok);
+    const wrong = document.createElement('span'); wrong.className = 'wrong'; wrong.textContent = word.slice(ok, t.length);
+    $('word').replaceChildren(done, wrong, word.slice(t.length));
+    return ok === t.length;
+  }
+  $('guess').oninput = () => {
+    const value = $('guess').value;
+    const good = renderWord(value);
+    if (good && value) SFX.key();
+    if (!good && lastGood) { SFX.wrong(); $('guess').classList.remove('shake'); void $('guess').offsetWidth; $('guess').classList.add('shake'); }
+    lastGood = good;
+    if (value.trim().toLowerCase() === word) send({ type: 'guess', word: value });
+  };
+  $('guess').onkeydown = (e) => e.key === 'Enter' && send({ type: 'guess', word: $('guess').value });
   $('guess').onpaste = (e) => e.preventDefault(); // no copy-paste cheating
 
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === 'state') {
+  // ---------- messages ----------
+  function handle(msg) {
+    if (msg.type === 'rooms') {
+      $('rooms').replaceChildren(...msg.rooms.map((r) => {
+        const b = document.createElement('button');
+        b.className = 'room';
+        b.style.setProperty('--c', ROOM_COLORS[r.id]);
+        b.disabled = r.count >= msg.max;
+        const name = document.createElement('strong'); name.textContent = r.name;
+        const count = document.createElement('small'); count.textContent = `${r.count} de ${msg.max} alunos`;
+        const status = document.createElement('small');
+        status.textContent = b.disabled ? 'Sala cheia' : r.running ? 'Partida em andamento' : 'Esperando alunos';
+        b.append(name, count, status);
+        b.onclick = () => joinRoom(r.id);
+        return b;
+      }));
+    } else if (msg.type === 'joined') {
+      document.body.dataset.room = msg.room;
+      $('roomName').textContent = msg.name;
+      $('lobby').classList.add('hidden');
+      $('game').classList.remove('hidden');
+      word = '';
+      $('word').textContent = '';
+      $('info').textContent = 'Espere a turma chegar e clique em "Começar partida".';
+      SFX.join();
+      startMusic();
+    } else if (msg.type === 'state') {
       $('scores').replaceChildren(...msg.players.map((p) => {
         const li = document.createElement('li');
-        li.textContent = `${p.name} — ${p.score} pts`;
+        li.className = 'lane' + (p.name === myName ? ' me' : '');
+        const name = document.createElement('span'); name.className = 'name'; name.textContent = p.name;
+        const road = document.createElement('span'); road.className = 'road';
+        const car = document.createElement('span'); car.className = 'car'; car.textContent = p.name[0].toUpperCase();
+        car.style.setProperty('--f', p.score / msg.rounds);
+        road.append(car);
+        const score = document.createElement('span'); score.className = 'score'; score.textContent = p.score;
+        li.append(name, road, score);
         return li;
       }));
-      $('startBtn').disabled = msg.running;
-      $('round').textContent = msg.running ? `Rodada ${msg.round}/${msg.rounds}` : `${msg.players.length}/30 jogadores na sala`;
+      $('startBtn').parentElement.classList.toggle('hidden', msg.running);
+      $('round').textContent = msg.running ? `Palavra ${msg.round} de ${msg.rounds}` : `${msg.players.length} ${msg.players.length === 1 ? 'aluno' : 'alunos'} na sala`;
     } else if (msg.type === 'word') {
-      $('word').textContent = msg.word;
-      $('info').textContent = 'Valendo!';
+      word = msg.word;
+      lastGood = true;
+      renderWord();
+      $('info').textContent = 'Valendo! Digite rápido.';
+      $('guess').value = '';
       $('guess').disabled = false;
       $('guess').focus();
+      SFX.word();
     } else if (msg.type === 'winner') {
-      $('word').textContent = '';
-      $('info').textContent = `${msg.name} acertou primeiro! +1 ponto`;
+      const me = msg.name === myName;
+      $('info').textContent = me ? 'Você acertou primeiro! +1 ponto' : `${msg.name} acertou primeiro.`;
       $('guess').disabled = true;
+      $('guess').value = '';
+      $('guess').classList.remove('shake');
+      word = '';
+      me ? SFX.myWin() : SFX.otherWin();
     } else if (msg.type === 'end') {
       const top = msg.ranking[0];
-      $('word').textContent = '🏆 Fim de jogo';
-      $('info').textContent = top ? `Vencedor: ${top.name} com ${top.score} pts` : '';
+      const banner = document.createElement('span'); banner.className = 'banner';
+      banner.textContent = top ? `🏆 ${top.name} venceu!` : 'Fim de jogo';
+      $('word').replaceChildren(banner);
+      $('info').textContent = top ? `${top.name} fez ${top.score} ${top.score === 1 ? 'ponto' : 'pontos'}. Clique em "Começar partida" para jogar de novo.` : '';
       $('guess').disabled = true;
+      $('startBtn').textContent = 'Jogar de novo';
+      SFX.end();
     } else if (msg.type === 'error') {
-      alert(msg.message);
+      $('lobbyMsg').textContent = msg.message;
     }
-  };
-  ws.onclose = () => { $('info').textContent = 'Conexão perdida. Recarregue a página.'; };
+  }
+
+  applySound();
+  connect();
 </script>
 </body>
 </html>
