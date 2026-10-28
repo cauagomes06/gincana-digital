@@ -54,6 +54,8 @@
   }
   .primary:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
   .primary:disabled { opacity: .45; cursor: default; }
+  .primary[aria-pressed="true"] { background: #fff; color: var(--room); outline: 3px solid var(--room); }
+  .lane .ok { color: var(--good); font-weight: 700; }
   .ghost { background: none; border: 2px solid var(--ink); border-radius: 999px; padding: 4px 14px; font-size: .9rem; line-height: 1.4; }
   .ghost[aria-pressed="false"] { opacity: .5; text-decoration: line-through; }
 
@@ -145,8 +147,8 @@
     <input id="guess" placeholder="Digite a palavra aqui" aria-label="Digite a palavra" autocomplete="off" autocapitalize="off" spellcheck="false" disabled>
     <ol class="feed" id="feed" aria-label="Quem já acertou"></ol>
     <div class="controls">
-      <button class="primary" id="startBtn">Começar partida</button>
-      <span class="muted" id="startHint">Qualquer aluno da sala pode começar.</span>
+      <button class="primary" id="readyBtn" aria-pressed="false">Estou pronto!</button>
+      <span class="muted" id="readyHint"></span>
     </div>
 
     <h2>Placar</h2>
@@ -156,7 +158,12 @@
 <script>
   const $ = (id) => document.getElementById(id);
   const ROOM_COLORS = { azul: 'var(--azul)', verde: 'var(--verde)', roxa: 'var(--roxa)' };
-  let ws, myName = '', word = '', lastGood = true, countdown;
+  let ws, myName = '', word = '', lastGood = true, countdown, myReady = false;
+  function setReady(ready) {
+    myReady = ready;
+    $('readyBtn').setAttribute('aria-pressed', ready);
+    $('readyBtn').textContent = ready ? '✓ Pronto! (clique para cancelar)' : 'Estou pronto!';
+  }
   const stopCountdown = () => { clearInterval(countdown); countdown = null; };
 
   // ---------- audio: chiptune loop + effects, all synthesized (no audio files) ----------
@@ -251,7 +258,11 @@
     $('lobby').classList.remove('hidden');
     $('lobbyMsg').textContent = '';
   };
-  $('startBtn').onclick = () => send({ type: 'start' });
+  $('readyBtn').onclick = () => {
+    setReady(!myReady);
+    send({ type: 'ready', ready: myReady });
+    SFX.key();
+  };
 
   // ---------- typing ----------
   function renderWord(typed = '') {
@@ -282,11 +293,11 @@
         const b = document.createElement('button');
         b.className = 'room';
         b.style.setProperty('--c', ROOM_COLORS[r.id]);
-        b.disabled = r.count >= msg.max;
+        b.disabled = r.count >= msg.max || r.running;
         const name = document.createElement('strong'); name.textContent = r.name;
         const count = document.createElement('small'); count.textContent = `${r.count} de ${msg.max} alunos`;
         const status = document.createElement('small');
-        status.textContent = b.disabled ? 'Sala cheia' : r.running ? 'Partida em andamento' : 'Esperando alunos';
+        status.textContent = r.running ? '🔒 Partida em andamento' : r.count >= msg.max ? 'Sala cheia' : 'Esperando alunos';
         b.append(name, count, status);
         b.onclick = () => joinRoom(r.id);
         return b;
@@ -298,7 +309,8 @@
       $('game').classList.remove('hidden');
       word = '';
       $('word').textContent = '';
-      $('info').textContent = 'Espere a turma chegar e clique em "Começar partida".';
+      $('info').textContent = 'Clique em "Estou pronto!" quando estiver preparado.';
+      setReady(false);
       SFX.join();
       startMusic();
     } else if (msg.type === 'state') {
@@ -306,6 +318,11 @@
         const li = document.createElement('li');
         li.className = 'lane' + (p.name === myName ? ' me' : ''); // shortcut: matches by name, so duplicate names both highlight
         const name = document.createElement('span'); name.className = 'name'; name.textContent = p.name;
+        if (!msg.running && p.ready) {
+          const ok = document.createElement('span'); ok.className = 'ok'; ok.textContent = ' ✓';
+          ok.setAttribute('aria-label', 'pronto');
+          name.append(ok);
+        }
         const road = document.createElement('span'); road.className = 'road';
         const car = document.createElement('span'); car.className = 'car'; car.textContent = p.name[0].toUpperCase();
         car.style.setProperty('--f', p.score / msg.maxScore);
@@ -314,7 +331,9 @@
         li.append(name, road, score);
         return li;
       }));
-      $('startBtn').parentElement.classList.toggle('hidden', msg.running);
+      $('readyBtn').parentElement.classList.toggle('hidden', msg.running);
+      const readyCount = msg.players.filter((p) => p.ready).length;
+      $('readyHint').textContent = `${readyCount} de ${msg.players.length} prontos. A partida começa quando todos estiverem prontos.`;
       $('round').textContent = msg.running ? `Palavra ${msg.round} de ${msg.rounds}` : `${msg.players.length} ${msg.players.length === 1 ? 'aluno' : 'alunos'} na sala`;
     } else if (msg.type === 'word') {
       word = msg.word;
@@ -359,9 +378,9 @@
       const banner = document.createElement('span'); banner.className = 'banner';
       banner.textContent = top ? `🏆 ${top.name} venceu!` : 'Fim de jogo';
       $('word').replaceChildren(banner);
-      $('info').textContent = top ? `${top.name} fez ${top.score} ${top.score === 1 ? 'ponto' : 'pontos'}. Clique em "Começar partida" para jogar de novo.` : '';
+      $('info').textContent = top ? `${top.name} fez ${top.score} ${top.score === 1 ? 'ponto' : 'pontos'}. Clique em "Estou pronto!" para jogar de novo.` : '';
       $('guess').disabled = true;
-      $('startBtn').textContent = 'Jogar de novo';
+      setReady(false);
       SFX.end();
     } else if (msg.type === 'error') {
       $('lobbyMsg').textContent = msg.message;

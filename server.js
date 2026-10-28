@@ -68,6 +68,7 @@ function nextRound(room) {
   if (room.round >= ROUNDS || room.players.size === 0) {
     room.running = false;
     room.word = null;
+    for (const p of room.players.values()) p.ready = false;
     broadcast(room, { type: 'end', ranking: ranking(room) });
     return sendState(room);
   }
@@ -86,12 +87,21 @@ function closeRound(room) {
   setTimeout(() => nextRound(room), PAUSE_MS);
 }
 
+// starts once every player in the room pressed "pronto"
+function startIfAllReady(room) {
+  const players = [...room.players.values()];
+  if (room.running || !players.length || !players.every((p) => p.ready)) return sendState(room);
+  for (const p of players) p.score = 0;
+  Object.assign(room, { running: true, round: 0, word: null });
+  nextRound(room);
+}
+
 function leave(ws) {
   const room = ws.room;
   if (!room) return;
   room.players.delete(ws);
   ws.room = null;
-  sendState(room);
+  startIfAllReady(room);
 }
 
 wss.on('connection', (ws) => {
@@ -107,18 +117,17 @@ wss.on('connection', (ws) => {
       const target = Object.hasOwn(rooms, msg.room) && rooms[msg.room];
       if (!target) return;
       if (target.players.size >= MAX_PLAYERS) return send(ws, { type: 'error', message: `${target.name} está cheia. Escolha outra sala.` });
+      if (target.running) return send(ws, { type: 'error', message: `${target.name} já está jogando. Espere a partida acabar ou escolha outra sala.` });
       const name = String(msg.name || '').trim().slice(0, 20) || 'Aluno';
-      target.players.set(ws, { name, score: 0 });
+      target.players.set(ws, { name, score: 0, ready: false });
       ws.room = target;
       send(ws, { type: 'joined', room: msg.room, name: target.name });
       sendState(target);
-      if (target.running && target.word) send(ws, { type: 'word', word: target.word, round: target.round, rounds: ROUNDS });
     } else if (msg.type === 'leave') {
       leave(ws);
-    } else if (msg.type === 'start' && player && !room.running) {
-      for (const p of room.players.values()) p.score = 0;
-      Object.assign(room, { running: true, round: 0, word: null });
-      nextRound(room);
+    } else if (msg.type === 'ready' && player && !room.running) {
+      player.ready = msg.ready === true;
+      startIfAllReady(room);
     } else if (msg.type === 'guess' && player && room.word && !room.answered.has(ws) && normalize(msg.word) === room.word) {
       room.answered.add(ws);
       const place = room.answered.size;

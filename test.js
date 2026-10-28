@@ -26,7 +26,13 @@ const waitFor = (ws, type) => new Promise((resolve) => {
 
 (async () => {
   const ana = await connect('Ana', 'azul'), bia = await connect('Bia', 'azul'), caio = await connect('Caio', 'verde');
-  ana.send(JSON.stringify({ type: 'start' }));
+  ana.send(JSON.stringify({ type: 'ready', ready: true }));
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(!ana.msgs.some((m) => m.type === 'word'), 'must wait until everyone is ready');
+  bia.send(JSON.stringify({ type: 'ready', ready: true }));
+  await waitFor(ana, 'word');
+  const late = await connect('Davi', 'azul');
+  assert.match((await waitFor(late, 'error')).message, /já está jogando/);
   for (let r = 0; r < 2; r++) {
     const { word } = await waitFor(bia, 'word');
     bia.send(JSON.stringify({ type: 'guess', word: 'errado' }));
@@ -43,6 +49,6 @@ const waitFor = (ws, type) => new Promise((resolve) => {
   const { rooms } = caio.msgs.filter((m) => m.type === 'rooms').pop();
   assert.deepStrictEqual(rooms.map((r) => r.count), [2, 1, 0]);
   console.log('OK');
-  for (const ws of [ana, bia, caio]) ws.close();
+  for (const ws of [ana, bia, caio, late]) ws.close();
   server.close(); process.exit(0);
 })();
