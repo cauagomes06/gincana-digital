@@ -154,7 +154,7 @@
     <div class="clock" id="clock" role="timer"></div>
     <div class="word" id="word" aria-live="polite"></div>
     <p id="info" aria-live="polite"></p>
-    <input id="guess" placeholder="Digite a palavra aqui" aria-label="Digite a palavra" autocomplete="off" autocapitalize="off" spellcheck="false" disabled>
+    <input id="guess" maxlength="30" placeholder="Digite a palavra aqui" aria-label="Digite a palavra" autocomplete="off" autocapitalize="off" spellcheck="false" disabled>
     <button class="ghost hidden" id="skipBtn">Pular palavra (−1 ponto) · Esc</button>
     <div class="controls">
       <button class="primary" id="readyBtn" aria-pressed="false">Estou pronto!</button>
@@ -168,7 +168,7 @@
 <script>
   const $ = (id) => document.getElementById(id);
   const ROOM_COLORS = { azul: 'var(--azul)', verde: 'var(--verde)', roxa: 'var(--roxa)' };
-  let ws, myKey, word = '', lastGood = true, clockTimer, myReady = false;
+  let ws, myKey, word = '', lastGood = true, clockTimer, myReady = false, replaced = false;
   const lanes = new Map(); // player key -> <li>
   // secret id survives reloads in this tab, so a dropped student rejoins the same match with their score
   const session = (() => { try { return JSON.parse(sessionStorage.getItem('corrida')) || {}; } catch { return {}; } })();
@@ -277,16 +277,22 @@
 
   // ---------- connection ----------
   function connect() {
-    ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
-    ws.onmessage = (e) => handle(JSON.parse(e.data));
-    ws.onopen = () => {
+    const sock = ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+    sock.onmessage = (e) => { if (sock === ws) handle(JSON.parse(e.data)); }; // ignore a stale socket
+    sock.onopen = () => {
       $('lobbyMsg').textContent = '';
       if (session.room) send({ type: 'join', name: session.name, room: session.room, id: session.id });
     };
-    ws.onclose = () => {
+    sock.onclose = () => {
+      if (sock !== ws) return;
+      $('guess').disabled = true;
+      if (replaced) {
+        stopClock();
+        $('info').textContent = 'O jogo foi aberto em outra aba. Continue jogando por lá.';
+        return;
+      }
       $('lobbyMsg').textContent = 'Conexão perdida. Tentando reconectar…';
       $('info').textContent = 'Conexão perdida. Tentando reconectar… Seus pontos estão guardados.';
-      $('guess').disabled = true;
       setTimeout(connect, 2000);
     };
   }
@@ -369,8 +375,14 @@
         b.onclick = () => joinRoom(r.id);
         return b;
       }));
+    } else if (msg.type === 'replaced') {
+      replaced = true;
     } else if (msg.type === 'joined') {
       myKey = msg.key;
+      // after a server restart keys start over: drop old lanes and the old match clock
+      stopClock();
+      lanes.clear();
+      $('scores').replaceChildren();
       document.body.dataset.room = msg.room;
       $('roomName').textContent = msg.name;
       $('lobby').classList.add('hidden');
@@ -394,7 +406,7 @@
           li.className = 'lane';
           li.innerHTML = '<span class="name"><span class="label"></span><span class="ok" aria-label="pronto"></span></span><span class="road"><span class="car"></span></span><span class="score"></span>';
           li.querySelector('.label').textContent = p.name;
-          li.querySelector('.car').textContent = p.name[0].toUpperCase();
+          li.querySelector('.car').textContent = [...p.name][0].toUpperCase(); // spread keeps emoji whole
           lanes.set(p.key, li);
           $('scores').append(li);
         }

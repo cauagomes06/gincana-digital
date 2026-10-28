@@ -76,6 +76,7 @@ function shuffle(list) {
 const wordFor = (room, player) => room.sequence[player.index % room.sequence.length];
 
 function endGame(room) {
+  clearTimeout(room.timer); // the game may end early; its pending timer must not end the next one
   room.running = false;
   const final = ranking(room); // before cleanup: a student who dropped still keeps their place
   for (const [id, p] of room.players) {
@@ -97,9 +98,9 @@ function startIfAllReady(room) {
   broadcast(room, { type: 'start', countdown: COUNTDOWN_MS, duration: DURATION_MS });
   sendState(room);
   sendRooms();
-  setTimeout(() => {
+  room.timer = setTimeout(() => {
     for (const p of room.players.values()) send(p.ws, { type: 'word', word: wordFor(room, p) });
-    setTimeout(() => endGame(room), DURATION_MS);
+    room.timer = setTimeout(() => endGame(room), DURATION_MS);
   }, COUNTDOWN_MS);
 }
 
@@ -110,6 +111,7 @@ function leave(ws, quit) {
   ws.room = ws.player = null;
   if (room.running && !quit) player.ws = null; // keep the score so they can come back
   else room.players.delete(player.id);
+  if (room.running && !room.players.size) return endGame(room); // everyone quit: unlock the room now
   sendRooms();
   startIfAllReady(room);
 }
@@ -121,7 +123,11 @@ function join(ws, msg) {
   let player = target.players.get(id);
   if (player) {
     // same browser coming back: take over the old connection, keep score and position
-    if (player.ws) { player.ws.room = player.ws.player = null; player.ws.close(); }
+    if (player.ws) {
+      send(player.ws, { type: 'replaced' }); // tells a duplicated tab to stop reconnecting
+      player.ws.room = player.ws.player = null;
+      player.ws.close();
+    }
   } else {
     if (target.players.size >= MAX_PLAYERS) return send(ws, { type: 'error', message: `${target.name} está cheia. Escolha outra sala.` });
     if (target.running) return send(ws, { type: 'error', message: `${target.name} já está jogando. Espere a partida acabar ou escolha outra sala.` });
@@ -151,6 +157,7 @@ wss.on('connection', (ws) => {
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
+    if (!msg || typeof msg !== 'object') return; // e.g. "null" sent from the console used to crash the server
     const { room, player } = ws;
     const playing = player && room.running && Date.now() >= room.startsAt;
 
@@ -177,6 +184,8 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => leave(ws, false));
+  // without a listener, a bad frame (e.g. over maxPayload) throws and takes the whole server down; ws closes the socket itself
+  ws.on('error', () => {});
 });
 
 server.listen(PORT, () => console.log(`Jogo rodando em http://localhost:${PORT}`));

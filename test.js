@@ -27,6 +27,33 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const sendTo = (ws, msg) => ws.send(JSON.stringify(msg));
 
 (async () => {
+  // bad messages must not crash the server (a crash would kill this test process too)
+  const rogue = await connect('Rogue', 'roxa');
+  rogue.on('error', () => {});
+  rogue.send('null');
+  rogue.send(JSON.stringify({ type: 'guess', word: 'a'.repeat(2000) })); // over maxPayload: server drops this socket
+  await wait(100);
+
+  // a duplicated tab (same id) takes over; the old one is told to stop reconnecting
+  const tabA = await connect('Fê', 'roxa', 'fe');
+  const tabB = await connect('Fê', 'roxa', 'fe');
+  await waitFor(tabA, 'replaced');
+
+  // everyone quitting mid-game unlocks the room; the old game's timer must not end the next game early
+  sendTo(tabB, { type: 'ready', ready: true });
+  await waitFor(tabB, 'start');
+  sendTo(tabB, { type: 'leave' });
+  await wait(300);
+  const roxa = () => tabB.msgs.filter((m) => m.type === 'rooms').pop().rooms[2];
+  assert.strictEqual(roxa().running, false, 'room unlocks when everyone quits');
+  sendTo(tabB, { type: 'join', name: 'Fê', room: 'roxa', id: 'fe' });
+  sendTo(tabB, { type: 'ready', ready: true });
+  await waitFor(tabB, 'start');
+  await wait(650); // past the first game's would-be end, before the second one's
+  assert.ok(!tabB.msgs.some((m) => m.type === 'end'), 'stale timer ended the new game');
+  sendTo(tabB, { type: 'leave' });
+  await wait(50);
+
   let ana = await connect('Ana', 'azul');
   const bia = await connect('Bia', 'azul'), caio = await connect('Caio', 'verde');
 
@@ -74,6 +101,6 @@ const sendTo = (ws, msg) => ws.send(JSON.stringify(msg));
   const { rooms } = caio.msgs.filter((m) => m.type === 'rooms').pop();
   assert.deepStrictEqual(rooms.map((r) => [r.count, r.running]), [[2, false], [1, false], [0, false]]);
   console.log('OK');
-  for (const ws of [ana, bia, caio, late, twin]) ws.close();
+  for (const ws of [ana, bia, caio, late, twin, tabA, tabB]) ws.close();
   server.close(); process.exit(0);
 })();
