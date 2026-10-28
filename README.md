@@ -11,8 +11,10 @@ Feito para escola pública: não precisa instalar nada nos computadores dos alun
 | **Corrida das Letras** (teclado) | Digita a palavra que aparece. As letras certas ficam marcadas e as erradas, vermelhas. São 207 palavras, 121 com acento ou ç. | +1 por palavra. Pular a palavra (botão ou **Esc**) custa −1. |
 | **Caça às Letras** (mouse) | Clica nas letras antes que elas sumam. Um anel em volta mostra o tempo restante. As letras ficam menores e mais rápidas. | +1 por letra. Letra perdida ou clique no lugar errado só fazem um som. |
 | **Leva o Lápis** (mouse) | Arrasta o lápis da largada até a bandeira sem encostar em borrões de tinta, borrachas que deslizam e réguas que giram. Os percursos ficam mais difíceis, e a partir do 4º há um **ponto seguro** no meio do caminho. | +1 por percurso. Encostar faz o lápis voltar ao ponto seguro. Pular o percurso custa −1. |
+| **Estoura Balões** (mouse) | Balões sobem pela tela e cada cor pede um clique diferente: **vermelho** com 1 clique, **amarelo** com 2 cliques rápidos e **verde** com o botão direito. Os 3 primeiros ensinam um de cada, depois os balões ficam menores e mais rápidos. | +1 por balão. Clique do tipo errado não estoura, e balão que foge só faz um som. |
+| **Monta Palavra** (mouse) | Arrasta as sílabas para os espaços e forma a palavra (MA + RA + CU + JÁ). Sobram 2 sílabas de outras palavras para confundir. São 70 palavras. | +1 por palavra. Sílaba errada volta para o lugar. Pular a palavra custa −1. |
 
-Para ser justo, **todos da sala recebem as mesmas palavras, letras e percursos, na mesma ordem**.
+Para ser justo, **todos da sala recebem as mesmas palavras, letras, percursos e balões, na mesma ordem**.
 
 ## Como jogar
 
@@ -83,14 +85,17 @@ Cuidados:
 server.js          entrega os arquivos de public/ e liga cada aluno ao jogo (WebSocket)
 game.js            regras: salas, prontos, tempo, pontos, reconexão e as provas
 words.js           lista de palavras da Corrida das Letras
+syllables.js       palavras separadas em sílabas do Monta Palavra
 public/
   index.html       estrutura da tela e ícones
   style.css        visual de caderno
   app.js           lógica do navegador: digitação, cliques, arrastar, som e placar
+  favicon.svg      ícone da aba do navegador
 test/game.test.js  testes automáticos (npm test)
 ```
 
 - **Para mudar as palavras**, edite `words.js` (em minúsculas, com acento). O `npm test` avisa se houver palavra repetida.
+- **Para mudar as palavras do Monta Palavra**, edite `syllables.js` (sílabas separadas por hífen, ex.: `ca-va-lo`). O `npm test` confere o formato, mas a separação das sílabas é responsabilidade de quem edita.
 - **Para criar uma prova nova**, siga estes passos:
   1. Em `game.js`, adicione em `MODES` a função que gera a lista de desafios.
   2. Ainda em `game.js`, trate o envio em `sendChallenge` e as mensagens da prova em `message`.
@@ -100,5 +105,5 @@ O servidor sempre confere cada ponto. O navegador só mostra e envia as ações 
 
 ## Créditos
 
-- Ícones: [Phosphor Icons](https://phosphoricons.com), licença MIT. Os desenhos ficam dentro de `public/index.html`, sem carregar nada de fora.
+- Ícones: [Phosphor Icons](https://phosphoricons.com), licença MIT. Os desenhos ficam dentro de `public/index.html` e `public/favicon.svg`, sem carregar nada de fora.
 - Fontes: [Lilita One](https://fonts.google.com/specimen/Lilita+One) e [Atkinson Hyperlegible](https://fonts.google.com/specimen/Atkinson+Hyperlegible), pelo Google Fonts.

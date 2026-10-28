@@ -1,5 +1,6 @@
 // Game rules: rooms, ready-up, timed matches, scoring. Knows nothing about HTTP; server.js feeds it sockets.
 const WORDS = require('./words');
+const SYLLABLE_WORDS = require('./syllables');
 
 const MAX_PLAYERS = 30;
 const DURATION_MS = Number(process.env.DURATION_MS) || 120000; // match length
@@ -68,12 +69,35 @@ function makeCourse(level) {
 }
 const makeCourses = () => Array.from({ length: 60 }, (_, level) => makeCourse(level));
 
+// Estoura Balões: each colour needs a different click. The first three teach one of each.
+const BALLOON_KINDS = ['click', 'double', 'right'];
+const makeBalloons = () => Array.from({ length: 300 }, (_, i) => ({
+  x: 0.08 + Math.random() * 0.84, // fraction of the play area width
+  kind: i < 3 ? BALLOON_KINDS[i] : BALLOON_KINDS[Math.floor(Math.random() * 3)],
+  size: Math.max(56, 90 - i), // px
+  life: Math.max(1600, 4200 - i * 70), // ms to float from bottom to top
+}));
+
+// Monta Palavra: drag the syllables into place; two extra syllables from other words make it a puzzle
+function makePuzzle(entry) {
+  const parts = entry.split('-');
+  const others = shuffle(SYLLABLE_WORDS.flatMap((w) => w.split('-')).filter((s) => !parts.includes(s)));
+  const extra = [...new Set(others)].slice(0, 2);
+  // a quick hand still needs about 0.4 s per syllable to drag it
+  return { word: parts.join(''), parts, tiles: shuffle([...parts, ...extra]), minMs: 400 * parts.length };
+}
+const makePuzzles = () => shuffle(SYLLABLE_WORDS).map(makePuzzle);
+
 // each mode builds the list every player in the room goes through, in the same order
 const MODES = {
   digitacao: () => shuffle(WORDS),
   caca: makeTargets,
   lapis: makeCourses,
+  baloes: makeBalloons,
+  monta: makePuzzles,
 };
+const CLICK_MODES = ['caca', 'baloes']; // a target on a timer: hit or miss, no skipping
+const FINISH_MODES = ['lapis', 'monta']; // the student reports "done"; the server checks it wasn't impossibly fast
 
 const normalize = (s) => String(s).trim().toLowerCase().normalize('NFC');
 const rooms = {
@@ -110,9 +134,9 @@ const current = (room, player) => room.sequence[player.index % room.sequence.len
 function sendChallenge(room, player, extra) {
   player.shownAt = Date.now();
   const item = current(room, player);
-  if (room.mode === 'caca') send(player.ws, { type: 'target', index: player.index, ...item });
-  else if (room.mode === 'lapis') send(player.ws, { type: 'course', index: player.index, ...item, ...extra });
-  else send(player.ws, { type: 'word', word: item, ...extra });
+  const type = { digitacao: 'word', caca: 'target', lapis: 'course', baloes: 'balloon', monta: 'puzzle' }[room.mode];
+  if (room.mode === 'digitacao') send(player.ws, { type, word: item, ...extra });
+  else send(player.ws, { type, index: player.index, ...item, ...extra });
 }
 
 function endGame(room) {
@@ -219,7 +243,7 @@ function message(ws, raw) {
     sendRooms();
   } else if (!playing) {
     // everything below only counts during a match
-  } else if (msg.type === 'skip' && room.mode !== 'caca' && Date.now() - player.lastSkip > 300) {
+  } else if (msg.type === 'skip' && !CLICK_MODES.includes(room.mode) && Date.now() - player.lastSkip > 300) {
     // skipping a word or a course costs a point; the throttle stops a held key from flooding the room
     player.lastSkip = Date.now();
     player.score--;
@@ -233,21 +257,21 @@ function message(ws, raw) {
       sendChallenge(room, player);
       sendState(room);
     }
-  } else if (room.mode === 'lapis') {
+  } else if (FINISH_MODES.includes(room.mode)) {
     if (msg.type === 'done' && msg.index === player.index && Date.now() - player.shownAt >= current(room, player).minMs) {
       player.score++;
       player.index++;
       sendChallenge(room, player);
       sendState(room);
     }
-  } else if (room.mode === 'caca' && msg.index === player.index) {
+  } else if (CLICK_MODES.includes(room.mode) && msg.index === player.index) {
     const age = Date.now() - player.shownAt;
     if (msg.type === 'hit' && age >= MIN_REACTION_MS && age <= current(room, player).life + 500) {
       player.score++;
       player.index++;
       sendChallenge(room, player);
       sendState(room);
-    } else if (msg.type === 'miss') { // the letter vanished: next one, no point
+    } else if (msg.type === 'miss') { // the letter vanished or the balloon got away: next one, no point
       player.index++;
       sendChallenge(room, player);
     }
@@ -259,4 +283,4 @@ function disconnect(ws) {
   leave(ws, false);
 }
 
-module.exports = { connect, message, disconnect, WORDS, makeCourse, segDist, PENCIL_R };
+module.exports = { connect, message, disconnect, WORDS, makeCourse, segDist, PENCIL_R, makePuzzle };

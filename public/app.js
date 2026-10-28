@@ -10,7 +10,12 @@ const PROVAS = [
     help: 'Clique nas letras antes que elas sumam. Cada letra vale 1 ponto, e elas ficam menores e mais rápidas.' },
   { id: 'lapis', name: 'Leva o Lápis', icon: 'pencil-simple', skip: 'Pular percurso (−1 ponto)',
     help: 'Arraste o lápis até a bandeira sem encostar nos borrões, borrachas e réguas. Cada percurso vale 1 ponto.' },
+  { id: 'baloes', name: 'Estoura Balões', icon: 'balloon',
+    help: 'Estoure os balões antes que fujam: vermelho com 1 clique, amarelo com 2 cliques rápidos, verde com o botão direito.' },
+  { id: 'monta', name: 'Monta Palavra', icon: 'puzzle-piece', skip: 'Pular palavra (−1 ponto)',
+    help: 'Arraste as sílabas para os espaços e monte a palavra. Duas sílabas sobram! Cada palavra vale 1 ponto.' },
 ];
+const BALLOON_LABELS = { click: '1 clique', double: '2 cliques', right: 'direito' };
 const prova = (id) => PROVAS.find((p) => p.id === id) || PROVAS[0];
 const iconSvg = (name) => `<svg class="icon" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const lanes = new Map(); // player key -> <li>
@@ -118,6 +123,8 @@ const SFX = {
   missClick: () => sfx([64, 58], 0.06, 0.1, 'square', 0.6), // "bzz-bzz": clicked the paper, not the letter
   timeout: () => sfx([72, 67, 62, 55], 0.08, 0.14, 'sawtooth', 0.45), // falling "wom-wom": the letter got away
   crash: () => sfx([67, 61, 55], 0.05, 0.12, 'sawtooth', 0.55), // quick "brr": the pencil touched an obstacle
+  pop: () => sfx([91, 79], 0.03, 0.07, 'square', 0.6), // balloon popped
+  half: () => sfx([76], 0, 0.06, 'triangle', 0.7), // first of the two clicks a yellow balloon needs
   end: () => sfx([72, 72, 72, 76, 79, 76, 79, 84], 0.13, 0.22),
 };
 $('musicBtn').onclick = () => { prefs.music = !prefs.music; applySound(); };
@@ -158,6 +165,7 @@ function clearArena() {
   clearTimeout(targetTimer);
   if (course) cancelAnimationFrame(course.frame);
   course = null;
+  puzzle = null;
   $('arena').replaceChildren();
   $('arena').classList.add('hidden');
 }
@@ -315,10 +323,135 @@ $('leaveBtn').onclick = () => {
   showLobby();
   $('lobbyMsg').textContent = '';
 };
-const skip = () => { if (word || (course && !course.done)) send({ type: 'skip' }); };
+const skip = () => { if (word || (course && !course.done) || (puzzle && !puzzle.done)) send({ type: 'skip' }); };
 $('skipBtn').onclick = () => { skip(); $('guess').focus(); };
 // a click on the empty paper is a miss: no penalty, just a sound so students notice
-$('arena').onclick = (e) => { if (mode === 'caca' && e.target === $('arena')) SFX.missClick(); };
+const clickModes = ['caca', 'baloes'];
+$('arena').onclick = (e) => { if (clickModes.includes(mode) && e.target === $('arena')) SFX.missClick(); };
+$('arena').oncontextmenu = (e) => {
+  if (mode !== 'baloes') return;
+  e.preventDefault(); // the right button pops green balloons, so no browser menu here
+  if (e.target === $('arena')) SFX.missClick();
+};
+
+// ---------- Estoura Balões ----------
+function startBalloon(msg) {
+  clearTimeout(targetTimer);
+  const b = document.createElement('button');
+  b.className = `balloon ${msg.kind}`;
+  b.textContent = BALLOON_LABELS[msg.kind];
+  b.setAttribute('aria-label', `Balão: ${BALLOON_LABELS[msg.kind]}`);
+  b.style.cssText = `left: ${msg.x * 100}%; --size: ${msg.size}px; --life: ${msg.life}ms`;
+  let popped = false;
+  const pop = () => {
+    popped = true;
+    clearTimeout(targetTimer);
+    b.classList.add('popped');
+    b.disabled = true;
+    send({ type: 'hit', index: msg.index });
+    SFX.pop();
+  };
+  const wrong = () => {
+    b.classList.remove('wrong');
+    void b.offsetWidth;
+    b.classList.add('wrong');
+    SFX.missClick();
+  };
+  b.onclick = (e) => {
+    if (popped) return;
+    if (msg.kind === 'right') return wrong();
+    // e.detail counts quick consecutive clicks; a slow second click starts over at 1
+    if (msg.kind === 'double' && e.detail < 2) { b.classList.add('half'); return SFX.half(); }
+    pop();
+  };
+  b.oncontextmenu = (e) => {
+    e.preventDefault();
+    if (popped) return;
+    msg.kind === 'right' ? pop() : wrong();
+  };
+  $('arena').replaceChildren(b);
+  targetTimer = setTimeout(() => {
+    send({ type: 'miss', index: msg.index });
+    SFX.timeout();
+  }, msg.life);
+}
+
+// ---------- Monta Palavra ----------
+let puzzle = null; // the word being built: data, slots, how many are filled
+function startPuzzle(p) {
+  const wrap = document.createElement('div');
+  wrap.className = 'puzzle';
+  const target = document.createElement('div');
+  target.className = 'puzzle-word';
+  target.textContent = p.word.toUpperCase();
+  const slots = document.createElement('div');
+  slots.className = 'slots';
+  const slotEls = p.parts.map(() => {
+    const s = document.createElement('div');
+    s.className = 'slot';
+    slots.append(s);
+    return s;
+  });
+  wrap.append(target, slots);
+  puzzle = { data: p, slotEls, filled: 0, done: false };
+
+  p.tiles.forEach((text, i) => {
+    const tile = document.createElement('div');
+    tile.className = 'tile';
+    tile.textContent = text.toUpperCase();
+    // spread the pieces over the lower half, in a loose grid
+    tile.style.left = `${8 + (i % 4) * 23 + (i % 2) * 3}%`;
+    tile.style.top = `${52 + Math.floor(i / 4) * 22}%`;
+    tile.style.setProperty('--tilt', `${(i % 3 - 1) * 4}deg`);
+    let start = null;
+    tile.addEventListener('pointerdown', (e) => {
+      if (puzzle.done) return;
+      e.preventDefault();
+      start = { x: e.clientX, y: e.clientY };
+      tile.setPointerCapture(e.pointerId);
+      tile.classList.add('held');
+    });
+    tile.addEventListener('pointermove', (e) => {
+      if (start) tile.style.translate = `${e.clientX - start.x}px ${e.clientY - start.y}px`;
+    });
+    const drop = (e) => {
+      if (!start) return;
+      start = null;
+      tile.classList.remove('held');
+      // which empty slot is under the pointer?
+      const k = slotEls.findIndex((s) => {
+        const r = s.getBoundingClientRect();
+        return !s.textContent && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+      });
+      tile.style.translate = '';
+      if (k < 0) return;
+      if (p.parts[k] !== text) {
+        tile.classList.remove('wrong');
+        void tile.offsetWidth;
+        tile.classList.add('wrong');
+        return SFX.missClick();
+      }
+      slotEls[k].textContent = text.toUpperCase();
+      slotEls[k].classList.add('filled');
+      tile.remove();
+      SFX.key();
+      if (++puzzle.filled === p.parts.length) finishPuzzle();
+    };
+    tile.addEventListener('pointerup', drop);
+    tile.addEventListener('pointercancel', () => { start = null; tile.style.translate = ''; tile.classList.remove('held'); });
+    wrap.append(tile);
+  });
+  puzzle.shownAt = performance.now();
+  $('arena').replaceChildren(wrap);
+}
+function finishPuzzle() {
+  puzzle.done = true;
+  $('info').textContent = 'Palavra formada! Próxima…';
+  SFX.correct();
+  const { index, minMs } = puzzle.data;
+  // the server rejects answers faster than minMs; a very quick hand just waits a moment
+  setTimeout(() => send({ type: 'done', index }), Math.max(0, minMs + 50 - (performance.now() - puzzle.shownAt)));
+}
 
 // home screen cards (the choice travels with the student into an empty room) and the in-room picker
 session.mode = session.mode || 'digitacao';
@@ -466,6 +599,22 @@ function handle(msg) {
     $('skipBtn').classList.remove('hidden');
     msg.skipped ? SFX.wrong() : first && SFX.word();
     startCourse(msg);
+  } else if (msg.type === 'balloon') {
+    if ($('arena').classList.contains('hidden')) {
+      $('arena').classList.remove('hidden');
+      $('word').textContent = '';
+      $('info').textContent = 'Valendo! Estoure os balões.';
+      SFX.word();
+    }
+    startBalloon(msg);
+  } else if (msg.type === 'puzzle') {
+    const first = $('arena').classList.contains('hidden');
+    $('arena').classList.remove('hidden');
+    $('word').textContent = '';
+    $('info').textContent = msg.skipped ? 'Palavra pulada: −1 ponto.' : first ? 'Valendo! Arraste as sílabas.' : 'Boa! Próxima palavra.';
+    $('skipBtn').classList.remove('hidden');
+    msg.skipped ? SFX.wrong() : first && SFX.word();
+    startPuzzle(msg);
   } else if (msg.type === 'target') {
     if ($('arena').classList.contains('hidden')) {
       $('arena').classList.remove('hidden');

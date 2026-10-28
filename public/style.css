@@ -118,7 +118,45 @@ button { font: inherit; font-weight: 700; color: inherit; cursor: pointer; }
 .mode { background: #fff; color: var(--room); border: 3px solid var(--room); border-radius: 10px; padding: 6px 16px; }
 .mode[aria-pressed="true"] { background: var(--room); color: #fff; }
 #modeHelp { margin: 8px auto 12px; }
-body[data-mode="caca"] #guess, body[data-mode="caca"] #skipBtn, body[data-mode="lapis"] #guess { display: none !important; }
+/* the typing field only belongs to Corrida das Letras; skipping isn't allowed in the click provas */
+body:not([data-mode="digitacao"]) #guess,
+body[data-mode="caca"] #skipBtn, body[data-mode="baloes"] #skipBtn { display: none !important; }
+
+/* Estoura Balões: each balloon floats from the bottom to the top in --life */
+.balloon {
+  position: absolute; bottom: 0; translate: -50% 0; width: var(--size); height: calc(var(--size) * 1.2);
+  border: 0; border-radius: 50% 50% 46% 46%; color: var(--ink); box-shadow: inset -6px -8px 0 rgba(0, 0, 0, .12);
+  font: 700 .8rem/1.1 'Atkinson Hyperlegible', system-ui, sans-serif; padding: 0 4px;
+  animation: rise var(--life) linear forwards;
+}
+.balloon::after { /* the string */
+  content: ''; position: absolute; left: 50%; top: 100%; width: 2px; height: 22px; background: var(--muted);
+}
+.balloon.click { background: #F25F5C; color: #fff; }
+.balloon.double { background: #FFD23F; }
+.balloon.double.half { box-shadow: inset 0 0 0 4px var(--ink); } /* one more quick click */
+.balloon.right { background: #3BCEAC; }
+.balloon.popped { animation: rise var(--life) linear forwards paused, popped .18s forwards; } /* freeze where it was hit */
+.balloon.wrong { animation: rise var(--life) linear forwards, shake .25s; }
+@keyframes rise { from { bottom: -30%; } to { bottom: 110%; } }
+@keyframes popped { to { transform: scale(1.6); opacity: 0; } }
+
+/* Monta Palavra: syllable tiles dragged into slots */
+.puzzle { position: absolute; inset: 0; }
+.puzzle-word { margin-top: 14px; font: 1.4rem/1 'Lilita One', system-ui, sans-serif; color: var(--muted); letter-spacing: .1em; }
+.slots { display: flex; justify-content: center; gap: 8px; margin-top: 14px; }
+.slot {
+  min-width: 84px; height: 56px; border: 3px dashed var(--room); border-radius: 10px; background: #fff;
+  font: 1.6rem/50px 'Lilita One', system-ui, sans-serif; color: var(--room);
+}
+.slot.filled { border-style: solid; background: var(--marker); color: var(--ink); }
+.tile {
+  position: absolute; min-width: 84px; padding: 0 10px; height: 52px; border-radius: 10px; cursor: grab;
+  background: var(--room); color: #fff; box-shadow: 0 4px 0 var(--ink); rotate: var(--tilt);
+  font: 1.5rem/52px 'Lilita One', system-ui, sans-serif; touch-action: none; user-select: none;
+}
+.tile.held { cursor: grabbing; z-index: 2; rotate: 0deg; scale: 1.08; }
+.tile.wrong { animation: shake .25s; }
 
 /* home screen: one card per prova */
 .provas { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-top: 12px; text-align: left; }

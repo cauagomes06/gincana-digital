@@ -18,6 +18,7 @@ test('serve as páginas e recusa caminhos desconhecidos', async () => {
   assert.match((await get('/')).headers.get('content-type'), /text\/html/);
   assert.match((await get('/app.js')).headers.get('content-type'), /javascript/);
   assert.match((await get('/style.css')).headers.get('content-type'), /css/);
+  assert.match((await get('/favicon.svg')).headers.get('content-type'), /image\/svg\+xml/);
   assert.strictEqual((await get('/../server.js')).status, 404);
 });
 
@@ -27,10 +28,13 @@ const connect = (name, room, id = name) => new Promise((resolve) => {
   ws.on('message', (d) => ws.msgs.push(JSON.parse(d)));
   ws.on('open', () => { ws.send(JSON.stringify({ type: 'join', name, room, id })); resolve(ws); });
 });
-const waitFor = (ws, type) => new Promise((resolve) => {
+// fails instead of hanging the whole run when an expected message never comes
+const waitFor = (ws, type) => new Promise((resolve, reject) => {
+  const giveUp = Date.now() + 5000;
   const check = () => {
     const i = ws.msgs.findIndex((m) => m.type === type);
     if (i >= 0) return resolve(ws.msgs.splice(0, i + 1).pop());
+    if (Date.now() > giveUp) return reject(new Error(`no "${type}" message within 5 s`));
     setTimeout(check, 5);
   };
   check();
@@ -130,6 +134,55 @@ test('Leva o Lápis: chegada rápida demais é recusada, pular custa 1 ponto', a
   sendTo(ze, { type: 'leave' });
   await wait(50);
   ze.close();
+});
+
+test('Monta Palavra: sílabas bem formadas e peças certas', () => {
+  const SYL = require('../syllables');
+  const { makePuzzle } = require('../game');
+  assert.ok(SYL.length >= 50, 'syllable list too short');
+  assert.strictEqual(new Set(SYL).size, SYL.length, 'duplicate words');
+  for (const w of SYL) {
+    assert.match(w, /^[a-zà-ú]+(-[a-zà-ú]+)+$/, `bad format: ${w}`);
+    const p = makePuzzle(w);
+    assert.strictEqual(p.word, w.replace(/-/g, ''));
+    assert.strictEqual(p.tiles.length, p.parts.length + 2, `${w}: two extra syllables`);
+    for (const part of p.parts) assert.ok(p.tiles.includes(part), `${w}: missing ${part}`);
+    assert.ok(p.tiles.filter((t) => !p.parts.includes(t)).length === 2, `${w}: extras must not be from the word`);
+  }
+});
+
+test('Estoura Balões e Monta Palavra: regras no servidor', async () => {
+  const bel = await connect('Bel', 'verde', 'bel');
+  await wait(50);
+  sendTo(bel, { type: 'mode', mode: 'baloes' });
+  sendTo(bel, { type: 'ready', ready: true });
+  const b0 = await waitFor(bel, 'balloon');
+  assert.deepStrictEqual([b0.index, b0.kind], [0, 'click']); // the first three teach each click
+  sendTo(bel, { type: 'skip' }); // no skipping balloons
+  await wait(170);
+  sendTo(bel, { type: 'hit', index: 0 });
+  const b1 = await waitFor(bel, 'balloon');
+  assert.deepStrictEqual([b1.index, b1.kind], [1, 'double']);
+  sendTo(bel, { type: 'miss', index: 1 });
+  assert.strictEqual((await waitFor(bel, 'balloon')).kind, 'right');
+  let { ranking } = await waitFor(bel, 'end');
+  assert.strictEqual(ranking[0].score, 1);
+
+  sendTo(bel, { type: 'mode', mode: 'monta' });
+  sendTo(bel, { type: 'ready', ready: true });
+  const p0 = await waitFor(bel, 'puzzle');
+  assert.strictEqual(p0.minMs, 400 * p0.parts.length);
+  sendTo(bel, { type: 'done', index: 0 }); // too fast to have dragged anything: ignored
+  sendTo(bel, { type: 'skip' });
+  const p1 = await waitFor(bel, 'puzzle');
+  assert.ok(p1.skipped && p1.index === 1);
+  ({ ranking } = await waitFor(bel, 'end'));
+  assert.strictEqual(ranking[0].score, -1); // the early "done" did not count, the skip cost 1
+  sendTo(bel, { type: 'mode', mode: 'digitacao' });
+  await wait(50);
+  sendTo(bel, { type: 'leave' });
+  await wait(50);
+  bel.close();
 });
 
 test('quem entra numa sala vazia escolhe a prova', async () => {
