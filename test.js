@@ -1,5 +1,5 @@
-// Self-check: two players in one room, first correct guess scores, other rooms stay isolated.
-process.env.PORT = 3999; process.env.ROUNDS = 2; process.env.PAUSE_MS = 10;
+// Self-check: everyone readies, each player types at their own pace, most words when time runs out wins.
+process.env.PORT = 3999; process.env.DURATION_MS = 400; process.env.COUNTDOWN_MS = 20;
 const assert = require('assert');
 const WebSocket = require('ws');
 const server = require('./server');
@@ -23,31 +23,35 @@ const waitFor = (ws, type) => new Promise((resolve) => {
   };
   check();
 });
+const guess = (ws, word) => ws.send(JSON.stringify({ type: 'guess', word }));
 
 (async () => {
   const ana = await connect('Ana', 'azul'), bia = await connect('Bia', 'azul'), caio = await connect('Caio', 'verde');
   ana.send(JSON.stringify({ type: 'ready', ready: true }));
   await new Promise((r) => setTimeout(r, 50));
-  assert.ok(!ana.msgs.some((m) => m.type === 'word'), 'must wait until everyone is ready');
+  assert.ok(!ana.msgs.some((m) => m.type === 'start'), 'must wait until everyone is ready');
   bia.send(JSON.stringify({ type: 'ready', ready: true }));
-  await waitFor(ana, 'word');
+  await waitFor(ana, 'start');
   const late = await connect('Davi', 'azul');
   assert.match((await waitFor(late, 'error')).message, /já está jogando/);
-  for (let r = 0; r < 2; r++) {
-    const { word } = await waitFor(bia, 'word');
-    bia.send(JSON.stringify({ type: 'guess', word: 'errado' }));
-    bia.send(JSON.stringify({ type: 'guess', word }));
-    bia.send(JSON.stringify({ type: 'guess', word })); // repeat, must not score twice
-    await waitFor(ana, 'scored');
-    ana.send(JSON.stringify({ type: 'guess', word })); // second place, smaller prize
-    caio.send(JSON.stringify({ type: 'guess', word })); // other room, must not score
-    await waitFor(bia, 'roundEnd'); // closes early: everyone answered
+
+  const anaFirst = (await waitFor(ana, 'word')).word;
+  let { word } = await waitFor(bia, 'word');
+  assert.strictEqual(word, anaFirst, 'same words for everyone');
+  guess(bia, 'errado');
+  for (let i = 0; i < 3; i++) {
+    guess(bia, word);
+    guess(bia, word); // repeat must not score twice
+    word = (await waitFor(bia, 'word')).word;
   }
+  guess(ana, anaFirst);
+  guess(caio, anaFirst); // other room, must not score
+
   const { ranking } = await waitFor(ana, 'end');
-  assert.deepStrictEqual(ranking.map((p) => [p.name, p.score]), [['Bia', 20], ['Ana', 14]]);
+  assert.deepStrictEqual(ranking.map((p) => [p.name, p.score]), [['Bia', 3], ['Ana', 1]]);
   assert.ok(!caio.msgs.some((m) => m.type === 'word'), 'room verde must not receive azul words');
   const { rooms } = caio.msgs.filter((m) => m.type === 'rooms').pop();
-  assert.deepStrictEqual(rooms.map((r) => r.count), [2, 1, 0]);
+  assert.deepStrictEqual(rooms.map((r) => [r.count, r.running]), [[2, false], [1, false], [0, false]]);
   console.log('OK');
   for (const ws of [ana, bia, caio, late]) ws.close();
   server.close(); process.exit(0);

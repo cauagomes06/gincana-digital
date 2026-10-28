@@ -88,13 +88,13 @@
   #guess.shake { animation: shake .25s; border-color: var(--bad); }
   @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
   .controls { display: flex; flex-direction: column; gap: 4px; align-items: center; margin-top: 16px; }
-  .feed { list-style: none; padding: 0; margin: 12px auto 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; min-height: var(--rule); }
-  .feed li { background: #fff; border: 2px solid var(--room); border-radius: 999px; padding: 0 12px; font-size: .9rem; line-height: 1.6; }
-  .feed li.me { background: var(--room); color: #fff; font-weight: 700; }
+  .clock { font: clamp(2rem, 7vw, 3rem)/1.2 'Lilita One', system-ui, sans-serif; color: var(--room); min-height: 1.2em; font-variant-numeric: tabular-nums; }
+  .clock.hurry { color: var(--bad); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { transform: scale(1.12); } }
 
   /* race track scoreboard */
   .track { list-style: none; padding: 0; margin: 12px auto 0; max-width: 620px; text-align: left; }
-  .lane { display: grid; grid-template-columns: minmax(80px, 160px) 1fr 2.5ch; gap: 10px; align-items: center; line-height: var(--rule); }
+  .lane { display: grid; grid-template-columns: minmax(80px, 160px) 1fr 3ch; gap: 10px; align-items: center; line-height: var(--rule); }
   .lane .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .lane.me .name { font-weight: 700; color: var(--room); }
   .road { position: relative; height: 20px; border-bottom: 2px dashed var(--muted); margin-right: 22px; }
@@ -112,7 +112,7 @@
   @media (max-width: 560px) {
     :root { --margin-x: 28px; }
     main { padding-left: calc(var(--margin-x) + 14px); padding-right: 16px; }
-    .lane { grid-template-columns: 80px 1fr 2.5ch; }
+    .lane { grid-template-columns: 80px 1fr 3ch; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -123,7 +123,7 @@
 <main>
   <section id="lobby">
     <h1><span>Corrida das Letras</span></h1>
-    <p class="muted">Uma palavra aparece na tela e todo mundo pode acertar. Quem digita primeiro ganha 10 pontos, o segundo 7, o terceiro 5 e os demais 3. Depois de 10 palavras, vence quem tiver mais pontos.</p>
+    <p class="muted">Todos recebem as mesmas palavras e cada um digita no seu ritmo. Cada palavra certa vale 1 ponto. Quando o tempo de 60 segundos acabar, vence quem fez mais pontos.</p>
 
     <label for="name">Seu nome</label>
     <input id="name" maxlength="20" autocomplete="off" placeholder="Ex.: Maria do 8º B" autofocus>
@@ -142,10 +142,10 @@
       <button class="ghost" id="leaveBtn">Trocar de sala</button>
     </div>
 
+    <div class="clock" id="clock" role="timer"></div>
     <div class="word" id="word" aria-live="polite"></div>
     <p id="info" aria-live="polite"></p>
     <input id="guess" placeholder="Digite a palavra aqui" aria-label="Digite a palavra" autocomplete="off" autocapitalize="off" spellcheck="false" disabled>
-    <ol class="feed" id="feed" aria-label="Quem já acertou"></ol>
     <div class="controls">
       <button class="primary" id="readyBtn" aria-pressed="false">Estou pronto!</button>
       <span class="muted" id="readyHint"></span>
@@ -158,13 +158,38 @@
 <script>
   const $ = (id) => document.getElementById(id);
   const ROOM_COLORS = { azul: 'var(--azul)', verde: 'var(--verde)', roxa: 'var(--roxa)' };
-  let ws, myName = '', word = '', lastGood = true, countdown, myReady = false;
+  let ws, myName = '', word = '', lastGood = true, clockTimer, myReady = false;
   function setReady(ready) {
     myReady = ready;
     $('readyBtn').setAttribute('aria-pressed', ready);
     $('readyBtn').textContent = ready ? '✓ Pronto! (clique para cancelar)' : 'Estou pronto!';
   }
-  const stopCountdown = () => { clearInterval(countdown); countdown = null; };
+  function stopClock() {
+    clearInterval(clockTimer);
+    $('clock').classList.remove('hurry');
+  }
+  // "3, 2, 1" in the word area, then the match clock counting down
+  function runClock(countdownMs, durationMs) {
+    const startAt = Date.now() + countdownMs, endAt = startAt + durationMs;
+    let lastBeep;
+    stopClock();
+    const update = () => {
+      const now = Date.now();
+      if (now < startAt) {
+        const n = Math.ceil((startAt - now) / 1000);
+        if (n !== lastBeep) { lastBeep = n; $('word').textContent = n; SFX.tick(); }
+        $('clock').textContent = `⏱ ${durationMs / 1000} s`;
+        return;
+      }
+      const left = Math.max(0, Math.ceil((endAt - now) / 1000));
+      $('clock').textContent = `⏱ ${left} s`;
+      $('clock').classList.toggle('hurry', left <= 10);
+      if (left <= 5 && left > 0 && left !== lastBeep) { lastBeep = left; SFX.tick(); }
+      if (!left) stopClock();
+    };
+    update();
+    clockTimer = setInterval(update, 100);
+  }
 
   // ---------- audio: chiptune loop + effects, all synthesized (no audio files) ----------
   const prefs = { music: true, sfx: true };
@@ -221,10 +246,8 @@
     key: () => sfx([84], 0, 0.04, 'square', 0.25),
     wrong: () => sfx([45, 41], 0.07, 0.12, 'sawtooth', 0.5),
     word: () => sfx([72, 79], 0.08, 0.12),
-    myWin: () => sfx([72, 76, 79, 84, 88], 0.06, 0.2),
     correct: () => sfx([72, 79, 84], 0.06, 0.16, 'triangle', 0.8),
     tick: () => sfx([90], 0, 0.05, 'square', 0.3),
-    otherWin: () => sfx([67, 60], 0.12, 0.2, 'triangle', 0.8),
     join: () => sfx([60, 67, 72], 0.07, 0.14, 'triangle', 0.8),
     end: () => sfx([72, 72, 72, 76, 79, 76, 79, 84], 0.13, 0.22),
   };
@@ -252,7 +275,8 @@
   $('leaveBtn').onclick = () => {
     send({ type: 'leave' });
     stopMusic();
-    stopCountdown();
+    stopClock();
+    $('clock').textContent = '';
     document.body.removeAttribute('data-room');
     $('game').classList.add('hidden');
     $('lobby').classList.remove('hidden');
@@ -309,6 +333,7 @@
       $('game').classList.remove('hidden');
       word = '';
       $('word').textContent = '';
+      $('clock').textContent = '';
       $('info').textContent = 'Clique em "Estou pronto!" quando estiver preparado.';
       setReady(false);
       SFX.join();
@@ -325,7 +350,7 @@
         }
         const road = document.createElement('span'); road.className = 'road';
         const car = document.createElement('span'); car.className = 'car'; car.textContent = p.name[0].toUpperCase();
-        car.style.setProperty('--f', p.score / msg.maxScore);
+        car.style.setProperty('--f', p.score / Math.max(10, msg.players[0].score)); // leader sets the scale
         road.append(car);
         const score = document.createElement('span'); score.className = 'score'; score.textContent = p.score;
         li.append(name, road, score);
@@ -334,51 +359,34 @@
       $('readyBtn').parentElement.classList.toggle('hidden', msg.running);
       const readyCount = msg.players.filter((p) => p.ready).length;
       $('readyHint').textContent = `${readyCount} de ${msg.players.length} prontos. A partida começa quando todos estiverem prontos.`;
-      $('round').textContent = msg.running ? `Palavra ${msg.round} de ${msg.rounds}` : `${msg.players.length} ${msg.players.length === 1 ? 'aluno' : 'alunos'} na sala`;
+      $('round').textContent = `${msg.players.length} ${msg.players.length === 1 ? 'aluno' : 'alunos'} na sala`;
+    } else if (msg.type === 'start') {
+      word = '';
+      $('info').textContent = 'Prepare-se!';
+      $('guess').value = '';
+      $('guess').disabled = true;
+      runClock(msg.countdown, msg.duration);
     } else if (msg.type === 'word') {
+      const first = !word;
       word = msg.word;
       lastGood = true;
       renderWord();
-      $('info').textContent = 'Valendo! Digite rápido.';
-      $('guess').value = '';
-      $('guess').disabled = false;
-      $('guess').focus();
-      $('feed').replaceChildren();
-      stopCountdown();
-      SFX.word();
-    } else if (msg.type === 'scored') {
-      const li = document.createElement('li');
-      li.className = msg.you ? 'me' : '';
-      li.textContent = `${msg.place}º ${msg.name} +${msg.points}`;
-      $('feed').append(li);
-      if (msg.you) {
-        stopCountdown();
-        $('info').textContent = `Você acertou em ${msg.place}º lugar! +${msg.points} pontos`;
-        $('guess').disabled = true;
-        $('guess').value = '';
-        $('guess').classList.remove('shake');
-        word = '';
-        msg.place === 1 ? SFX.myWin() : SFX.correct();
-      } else if (msg.place === 1 && word) {
-        SFX.otherWin();
-        let left = Math.round(msg.closeIn / 1000);
-        const show = () => { $('info').textContent = `${msg.name} acertou primeiro! Você ainda tem ${left} s.`; };
-        show();
-        countdown = setInterval(() => { left--; if (left > 0) { show(); SFX.tick(); } else stopCountdown(); }, 1000);
-      }
-    } else if (msg.type === 'roundEnd') {
-      stopCountdown();
-      if (word) $('info').textContent = `Tempo esgotado! A palavra era "${msg.word}".`;
-      $('guess').disabled = true;
+      $('info').textContent = first ? 'Valendo! Digite rápido.' : 'Boa! Próxima palavra.';
       $('guess').value = '';
       $('guess').classList.remove('shake');
-      word = '';
+      $('guess').disabled = false;
+      $('guess').focus();
+      first ? SFX.word() : SFX.correct();
     } else if (msg.type === 'end') {
       const top = msg.ranking[0];
+      stopClock();
+      $('clock').textContent = 'Tempo esgotado!';
+      word = '';
       const banner = document.createElement('span'); banner.className = 'banner';
       banner.textContent = top ? `🏆 ${top.name} venceu!` : 'Fim de jogo';
       $('word').replaceChildren(banner);
-      $('info').textContent = top ? `${top.name} fez ${top.score} ${top.score === 1 ? 'ponto' : 'pontos'}. Clique em "Estou pronto!" para jogar de novo.` : '';
+      $('info').textContent = top ? `${top.name} acertou ${top.score} ${top.score === 1 ? 'palavra' : 'palavras'}. Clique em "Estou pronto!" para jogar de novo.` : '';
+      $('guess').value = '';
       $('guess').disabled = true;
       setReady(false);
       SFX.end();
